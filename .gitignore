@@ -79,3 +79,4 @@ firebase-adminsdk-*.json
 # Uploads
 uploads/
 static/uploads/ 
+.vercel

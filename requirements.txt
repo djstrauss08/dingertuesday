@@ -1,5 +1,7 @@
-Flask
-MLB-StatsAPI 
-requests-cache
-APScheduler
-firebase-admin 
+Flask==2.3.3
+MLB-StatsAPI==1.6.0
+requests-cache==1.1.1
+APScheduler==3.10.4
+firebase-admin==6.2.0
+python-dotenv==1.0.0
+gunicorn==21.2.0 

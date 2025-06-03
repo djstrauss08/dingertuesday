@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.py"
+    }
+  ],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60
+    },
+    "api/cron/daily-update.py": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/daily-update",
+      "schedule": "0 3 * * *"
+    }
+  ],
+  "env": {
+    "FLASK_ENV": "production",
+    "DATABASE_PATH": "/tmp/daily_mlb_data.sqlite",
+    "VERCEL": "1"
+  }
+} 
