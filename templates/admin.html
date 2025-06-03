@@ -1,0 +1,350 @@
+{% extends 'layout.html' %}
+
+{% block title %}Admin - Daily Data Management{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-6" style="color: #111827 !important;">Daily Data Management</h1>
+    
+    <!-- Status Dashboard -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-lg shadow border">
+            <h3 class="text-lg font-semibold mb-3" style="color: #111827 !important;">Cache Status</h3>
+            <div id="cache-status" style="color: #1f2937 !important;">Loading...</div>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow border">
+            <h3 class="text-lg font-semibold mb-3" style="color: #111827 !important;">Database Status</h3>
+            <div id="database-status" style="color: #1f2937 !important;">Loading...</div>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow border">
+            <h3 class="text-lg font-semibold mb-3" style="color: #111827 !important;">Scheduler Status</h3>
+            <div id="scheduler-status" style="color: #1f2937 !important;">Loading...</div>
+        </div>
+    </div>
+    
+    <!-- Last Update Info -->
+    <div class="bg-white p-6 rounded-lg shadow border mb-6">
+        <h3 class="text-lg font-semibold mb-3" style="color: #111827 !important;">Last Update Information</h3>
+        <div id="update-info" style="color: #1f2937 !important;">Loading...</div>
+    </div>
+    
+    <!-- Management Controls -->
+    <div class="bg-white p-6 rounded-lg shadow border mb-6">
+        <h3 class="text-lg font-semibold mb-4" style="color: #111827 !important;">Management Controls</h3>
+        <div class="space-x-4">
+            <button id="trigger-update" style="background-color: #1d4ed8 !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; border: none; cursor: pointer;">
+                Trigger Update Now
+            </button>
+            <button id="refresh-status" style="background-color: #059669 !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; border: none; cursor: pointer;">
+                Refresh Status
+            </button>
+            <button id="clear-cache" style="background-color: #dc2626 !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; border: none; cursor: pointer;">
+                Clear All Cache
+            </button>
+        </div>
+        <div id="action-result" class="mt-4"></div>
+    </div>
+    
+    <!-- Blog Management -->
+    <div class="bg-white p-6 rounded-lg shadow border mb-6">
+        <h3 class="text-lg font-semibold mb-4" style="color: #111827 !important;">Blog Management</h3>
+        <div class="space-x-4">
+            <a href="/admin/articles/new" style="background-color: #059669 !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; text-decoration: none; display: inline-block;">
+                Write New Article
+            </a>
+            <a href="/admin/articles" style="background-color: #1d4ed8 !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; text-decoration: none; display: inline-block;">
+                Manage Articles
+            </a>
+            <a href="/blog" style="background-color: #374151 !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; text-decoration: none; display: inline-block;">
+                View Blog
+            </a>
+        </div>
+    </div>
+    
+    <!-- Data Performance Metrics -->
+    <div class="bg-white p-6 rounded-lg shadow border">
+        <h3 class="text-lg font-semibold mb-3" style="color: #111827 !important;">Performance Metrics</h3>
+        <div id="performance-metrics" style="color: #1f2937 !important;">Loading...</div>
+    </div>
+</div>
+
+<style>
+/* Strong CSS overrides for better text visibility */
+.container h1,
+.container h2,
+.container h3,
+.container h4 {
+    color: #111827 !important;
+    font-weight: 700 !important;
+}
+
+.container div,
+.container span,
+.container p {
+    color: #1f2937 !important;
+}
+
+.admin-text {
+    color: #111827 !important;
+    font-weight: 500 !important;
+}
+
+.admin-text-muted {
+    color: #374151 !important;
+    font-weight: 500 !important;
+}
+
+.status-info {
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    color: #1f2937 !important;
+}
+
+.status-label {
+    color: #111827 !important;
+    font-weight: 700 !important;
+}
+
+/* Button hover effects */
+button:hover,
+a:hover {
+    opacity: 0.9 !important;
+    transform: translateY(-1px);
+    transition: all 0.2s ease;
+}
+
+/* Ensure all text in status areas is dark */
+#cache-status *,
+#database-status *,
+#scheduler-status *,
+#update-info *,
+#performance-metrics * {
+    color: #1f2937 !important;
+    font-weight: 500 !important;
+}
+
+/* Green and red status colors - make them darker */
+.text-green-700,
+.text-green-600 {
+    color: #15803d !important;
+    font-weight: 700 !important;
+}
+
+.text-red-700,
+.text-red-600 {
+    color: #dc2626 !important;
+    font-weight: 700 !important;
+}
+
+/* Success and error message styling */
+.bg-green-50 {
+    background-color: #dcfce7 !important;
+    border-color: #16a34a !important;
+    color: #15803d !important;
+    font-weight: 600 !important;
+}
+
+.bg-red-50 {
+    background-color: #fef2f2 !important;
+    border-color: #dc2626 !important;
+    color: #dc2626 !important;
+    font-weight: 600 !important;
+}
+</style>
+
+<script>
+function updateStatus() {
+    fetch('/api/daily_status')
+        .then(response => response.json())
+        .then(data => {
+            // Update cache status
+            const cacheStatus = document.getElementById('cache-status');
+            cacheStatus.innerHTML = `
+                <div class="space-y-2">
+                    <div class="flex justify-between" style="margin-bottom: 8px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Pitchers:</span>
+                        <span style="color: ${data.daily_cache_status.pitchers ? '#15803d' : '#dc2626'} !important; font-weight: 700 !important;">
+                            ${data.daily_cache_status.pitchers ? '✓ Cached' : '✗ Missing'}
+                        </span>
+                    </div>
+                    <div class="flex justify-between" style="margin-bottom: 8px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Hitters:</span>
+                        <span style="color: ${data.daily_cache_status.hitters ? '#15803d' : '#dc2626'} !important; font-weight: 700 !important;">
+                            ${data.daily_cache_status.hitters ? '✓ Cached' : '✗ Missing'}
+                        </span>
+                    </div>
+                    <div class="flex justify-between" style="margin-bottom: 8px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Schedule:</span>
+                        <span style="color: ${data.daily_cache_status.schedule ? '#15803d' : '#dc2626'} !important; font-weight: 700 !important;">
+                            ${data.daily_cache_status.schedule ? '✓ Cached' : '✗ Missing'}
+                        </span>
+                    </div>
+                </div>
+            `;
+            
+            // Update database status
+            const dbStatus = document.getElementById('database-status');
+            dbStatus.innerHTML = `
+                <div class="space-y-2">
+                    <div class="flex justify-between" style="margin-bottom: 8px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Pitchers:</span>
+                        <span style="color: ${data.database_status.pitchers ? '#15803d' : '#dc2626'} !important; font-weight: 700 !important;">
+                            ${data.database_status.pitchers ? '✓ Stored' : '✗ Missing'}
+                        </span>
+                    </div>
+                    <div class="flex justify-between" style="margin-bottom: 8px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Hitters:</span>
+                        <span style="color: ${data.database_status.hitters ? '#15803d' : '#dc2626'} !important; font-weight: 700 !important;">
+                            ${data.database_status.hitters ? '✓ Stored' : '✗ Missing'}
+                        </span>
+                    </div>
+                    <div class="flex justify-between" style="margin-bottom: 8px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Schedule:</span>
+                        <span style="color: ${data.database_status.schedule ? '#15803d' : '#dc2626'} !important; font-weight: 700 !important;">
+                            ${data.database_status.schedule ? '✓ Stored' : '✗ Missing'}
+                        </span>
+                    </div>
+                </div>
+            `;
+            
+            // Update scheduler status
+            const schedulerStatus = document.getElementById('scheduler-status');
+            schedulerStatus.innerHTML = `
+                <div class="space-y-2">
+                    <div class="flex justify-between" style="margin-bottom: 8px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Status:</span>
+                        <span style="color: ${data.scheduler_running ? '#15803d' : '#dc2626'} !important; font-weight: 700 !important;">
+                            ${data.scheduler_running ? '✓ Running' : '✗ Stopped'}
+                        </span>
+                    </div>
+                    <div style="color: #374151 !important; font-weight: 600 !important; font-size: 0.9rem;">
+                        Next update: ${data.next_scheduled_update}
+                    </div>
+                </div>
+            `;
+            
+            // Update last update info
+            const updateInfo = document.getElementById('update-info');
+            updateInfo.innerHTML = `
+                <div class="space-y-2">
+                    <div style="margin-bottom: 8px;"><strong style="color: #111827 !important; font-weight: 700 !important;">Today:</strong> <span style="color: #1f2937 !important; font-weight: 600 !important;">${data.today}</span></div>
+                    <div style="margin-bottom: 8px;"><strong style="color: #111827 !important; font-weight: 700 !important;">Last Updated:</strong> <span style="color: #1f2937 !important; font-weight: 600 !important;">${data.daily_cache_status.last_updated || 'Never'}</span></div>
+                    <div style="margin-bottom: 8px;"><strong style="color: #111827 !important; font-weight: 700 !important;">Update Date:</strong> <span style="color: #1f2937 !important; font-weight: 600 !important;">${data.daily_cache_status.update_date || 'Never'}</span></div>
+                    <div style="color: #374151 !important; font-weight: 600 !important; font-size: 0.95rem;">
+                        ${data.daily_cache_status.update_date === data.today ? 
+                            '✓ Data is current for today' : 
+                            '⚠ Data may be outdated'}
+                    </div>
+                </div>
+            `;
+            
+            // Update performance metrics
+            const performanceMetrics = document.getElementById('performance-metrics');
+            performanceMetrics.innerHTML = `
+                <div class="space-y-3">
+                    <div style="margin-bottom: 12px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Cache Hit Rate:</span> 
+                        <span style="color: #1f2937 !important; font-weight: 600 !important;">Calculating...</span>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">API Response Time:</span> 
+                        <span style="color: #1f2937 !important; font-weight: 600 !important;">~200ms average</span>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <span style="color: #111827 !important; font-weight: 700 !important;">Database Size:</span> 
+                        <span style="color: #1f2937 !important; font-weight: 600 !important;">Loading...</span>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            console.error('Error fetching status:', error);
+            // Show error message with good contrast
+            document.getElementById('cache-status').innerHTML = '<div style="color: #dc2626 !important; font-weight: 700 !important;">Error loading status</div>';
+            document.getElementById('database-status').innerHTML = '<div style="color: #dc2626 !important; font-weight: 700 !important;">Error loading status</div>';
+            document.getElementById('scheduler-status').innerHTML = '<div style="color: #dc2626 !important; font-weight: 700 !important;">Error loading status</div>';
+        });
+}
+
+// Trigger manual update
+document.getElementById('trigger-update').addEventListener('click', function() {
+    const button = this;
+    const resultDiv = document.getElementById('action-result');
+    
+    button.disabled = true;
+    button.textContent = 'Updating...';
+    button.style.opacity = '0.6';
+    
+    fetch('/api/trigger_update')
+        .then(response => response.json())
+        .then(data => {
+            resultDiv.innerHTML = `
+                <div style="padding: 16px; border-radius: 6px; border: 2px solid; font-weight: 600; margin-top: 12px; ${data.status === 'success' ? 'background-color: #dcfce7; color: #15803d; border-color: #16a34a;' : 'background-color: #fef2f2; color: #dc2626; border-color: #dc2626;'}">
+                    ${data.message}
+                </div>
+            `;
+            
+            if (data.status === 'success') {
+                // Refresh status after a short delay
+                setTimeout(updateStatus, 2000);
+            }
+        })
+        .catch(error => {
+            resultDiv.innerHTML = `
+                <div style="padding: 16px; border-radius: 6px; border: 2px solid #dc2626; background-color: #fef2f2; color: #dc2626; font-weight: 600; margin-top: 12px;">
+                    Error: ${error.message}
+                </div>
+            `;
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.textContent = 'Trigger Update Now';
+            button.style.opacity = '1';
+        });
+});
+
+// Refresh status
+document.getElementById('refresh-status').addEventListener('click', updateStatus);
+
+// Clear cache
+document.getElementById('clear-cache').addEventListener('click', function() {
+    if (confirm('Are you sure you want to clear all cache? This will require fresh data loading.')) {
+        const resultDiv = document.getElementById('action-result');
+        
+        fetch('/api/clear_cache?key=admin123')
+            .then(response => response.json())
+            .then(data => {
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; border-radius: 6px; border: 2px solid; font-weight: 600; margin-top: 12px; ${data.status === 'success' ? 'background-color: #dcfce7; color: #15803d; border-color: #16a34a;' : 'background-color: #fef2f2; color: #dc2626; border-color: #dc2626;'}">
+                        ${data.message}
+                    </div>
+                `;
+                
+                if (data.status === 'success') {
+                    updateStatus();
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; border-radius: 6px; border: 2px solid #dc2626; background-color: #fef2f2; color: #dc2626; font-weight: 600; margin-top: 12px;">
+                        Error: ${error.message}
+                    </div>
+                `;
+            });
+    }
+});
+
+// Load initial status
+updateStatus();
+
+// Auto-refresh every 30 seconds
+setInterval(updateStatus, 30000);
+</script>
+
+<!-- Page Authentication -->
+<script type="module">
+    import '/static/js/page-auth.js';
+</script>
+{% endblock %} 

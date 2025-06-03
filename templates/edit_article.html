@@ -1,0 +1,2024 @@
+{% extends "layout.html" %}
+
+{% block title %}
+{% if article %}Edit Article{% else %}New Article{% endif %} - MLB HR Handicapper
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>{% if article %}Edit Article{% else %}Create New Article{% endif %}</h1>
+        <a href="/blog" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Articles
+        </a>
+    </div>
+
+    <form id="articleForm" method="POST">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label for="title">Title *</label>
+                            <input type="text" class="form-control" id="title" name="title" 
+                                   value="{% if article %}{{ article.title }}{% endif %}" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="summary">Summary</label>
+                            <textarea class="form-control" id="summary" name="summary" rows="3" 
+                                      placeholder="Brief summary of the article (optional)">{% if article %}{{ article.summary }}{% endif %}</textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="article-content">Content *</label>
+                            <div class="block-editor-container">
+                                <!-- Block Editor Header -->
+                                <div class="block-editor-header">
+                                    <div class="block-count">
+                                        <span id="blockCount">1</span> block
+                                    </div>
+                                    <div class="editor-actions">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="togglePreviewMode()" id="previewModeBtn">
+                                            <i class="fas fa-eye"></i> Preview
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearAllBlocks()" title="Clear All">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Block Editor Main Area -->
+                                <div class="block-editor-main" id="blockEditor">
+                                    <!-- Blocks will be dynamically added here -->
+                                </div>
+
+                                <!-- Add Block Interface -->
+                                <div class="add-block-container" id="addBlockContainer">
+                                    <button type="button" class="add-block-btn" onclick="showBlockSelector()">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                    
+                                    <!-- Block Selector Popup -->
+                                    <div class="block-selector" id="blockSelector" style="display: none;">
+                                        <div class="block-selector-header">
+                                            <h6>Choose a block</h6>
+                                            <button type="button" class="btn-close" onclick="hideBlockSelector()">×</button>
+                                        </div>
+                                        <div class="block-options">
+                                            <div class="block-category">
+                                                <h6>Text</h6>
+                                                <div class="block-grid">
+                                                    <button class="block-option" onclick="addBlock('paragraph')">
+                                                        <i class="fas fa-paragraph"></i>
+                                                        <span>Paragraph</span>
+                                                    </button>
+                                                    <button class="block-option" onclick="addBlock('heading')">
+                                                        <i class="fas fa-heading"></i>
+                                                        <span>Heading</span>
+                                                    </button>
+                                                    <button class="block-option" onclick="addBlock('quote')">
+                                                        <i class="fas fa-quote-left"></i>
+                                                        <span>Quote</span>
+                                                    </button>
+                                                    <button class="block-option" onclick="addBlock('list')">
+                                                        <i class="fas fa-list"></i>
+                                                        <span>List</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="block-category">
+                                                <h6>Media</h6>
+                                                <div class="block-grid">
+                                                    <button class="block-option" onclick="addBlock('image')">
+                                                        <i class="fas fa-image"></i>
+                                                        <span>Image</span>
+                                                    </button>
+                                                    <button class="block-option" onclick="addBlock('video')">
+                                                        <i class="fas fa-video"></i>
+                                                        <span>Video</span>
+                                                    </button>
+                                                    <button class="block-option" onclick="addBlock('embed')">
+                                                        <i class="fas fa-code"></i>
+                                                        <span>Embed</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="block-category">
+                                                <h6>Layout</h6>
+                                                <div class="block-grid">
+                                                    <button class="block-option" onclick="addBlock('separator')">
+                                                        <i class="fas fa-minus"></i>
+                                                        <span>Separator</span>
+                                                    </button>
+                                                    <button class="block-option" onclick="addBlock('spacer')">
+                                                        <i class="fas fa-arrows-alt-v"></i>
+                                                        <span>Spacer</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Preview Mode -->
+                                <div class="preview-mode" id="previewMode" style="display: none;">
+                                    <div class="preview-content" id="previewContent">
+                                        <!-- Preview will be rendered here -->
+                                    </div>
+                                </div>
+
+                                <!-- Hidden textarea for form submission -->
+                                <textarea id="article-content" name="content" style="display: none;"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Article Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label for="author">Author</label>
+                            <input type="text" class="form-control" id="author" name="author" 
+                                   value="{% if article %}{{ article.author }}{% else %}MLB Analyst{% endif %}">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="tags">Tags</label>
+                            <input type="text" class="form-control" id="tags" name="tags" 
+                                   value="{% if article %}{{ article.tags|join(', ') }}{% endif %}"
+                                   placeholder="Analytics, Home Runs, Strategy">
+                            <small class="form-text text-muted">Separate tags with commas</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="status">Status</label>
+                            <select class="form-control" id="status" name="status">
+                                <option value="published" {% if not article or article.status == 'published' %}selected{% endif %}>Published</option>
+                                <option value="draft" {% if article and article.status == 'draft' %}selected{% endif %}>Draft</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary btn-block" id="saveBtn">
+                                <i class="fas fa-save"></i> 
+                                {% if article %}Update Article{% else %}Publish Article{% endif %}
+                            </button>
+                        </div>
+
+                        {% if article %}
+                        <div class="form-group">
+                            <button type="button" class="btn btn-danger btn-block" id="deleteBtn" onclick="deleteArticle({{ article.id }})">
+                                <i class="fas fa-trash"></i> Delete Article
+                            </button>
+                        </div>
+                        {% endif %}
+
+                        <div class="form-group">
+                            <small class="text-muted">
+                                <strong>Markdown supported:</strong><br>
+                                **bold**, *italic*<br>
+                                # Heading<br>
+                                - List item<br>
+                                [Link](url)
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+// Set up data attributes for JavaScript
+document.body.setAttribute('data-editing', {% if article %}'true'{% else %}'false'{% endif %});
+{% if article %}
+document.body.setAttribute('data-article-id', '{{ article.id }}');
+{% endif %}
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Initializing block editor...');
+    
+    const form = document.getElementById('articleForm');
+    const saveBtn = document.getElementById('saveBtn');
+    
+    // Add debugging info
+    console.log('Form element:', form ? 'Found' : 'NOT FOUND');
+    console.log('Save button:', saveBtn ? 'Found' : 'NOT FOUND');
+    console.log('Block editor container:', document.getElementById('blockEditor') ? 'Found' : 'NOT FOUND');
+    console.log('Block selector:', document.getElementById('blockSelector') ? 'Found' : 'NOT FOUND');
+    
+    // Initialize block editor with a more robust approach
+    try {
+        initializeBlockEditor();
+        console.log('✅ Block editor initialized successfully');
+        
+        // Test the add block button
+        const addBtn = document.querySelector('.add-block-btn');
+        console.log('Add block button:', addBtn ? 'Found' : 'NOT FOUND');
+        if (addBtn) {
+            console.log('Add block button onclick:', addBtn.onclick ? 'Has onclick' : 'NO ONCLICK');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error initializing block editor:', error);
+        console.error('Stack trace:', error.stack);
+        // Fallback to basic text editor
+        showFallbackEditor();
+    }
+    
+    // Set up form submission
+    if (form) {
+        form.addEventListener('submit', handleFormSubmission);
+        console.log('✅ Form submission handler attached');
+    } else {
+        console.error('❌ Could not attach form submission handler - form not found');
+    }
+});
+
+// Simplified Block Editor Implementation
+let blockEditor = {
+    blocks: [],
+    currentBlockId: 0,
+    selectedBlockId: null,
+    isPreviewMode: false
+};
+
+function initializeBlockEditor() {
+    console.log('Setting up block editor...');
+    
+    // Check if we have existing content
+    const existingContent = document.querySelector('textarea[name="content"]');
+    const hasContent = existingContent && existingContent.value && existingContent.value.trim();
+    
+    console.log('Existing content:', hasContent ? 'Yes' : 'No');
+    
+    if (hasContent) {
+        console.log('Parsing existing content into blocks...');
+        try {
+            parseContentIntoBlocks(existingContent.value);
+        } catch (error) {
+            console.error('Error parsing content:', error);
+            addDefaultBlock();
+        }
+    } else {
+        console.log('Adding default paragraph block...');
+        addDefaultBlock();
+    }
+    
+    // Render the blocks
+    renderBlocks();
+    updateBlockCount();
+    
+    console.log('Block editor setup complete. Blocks:', blockEditor.blocks.length);
+}
+
+function addDefaultBlock() {
+    const blockId = 'block_' + (++blockEditor.currentBlockId);
+    blockEditor.blocks = [{
+        id: blockId,
+        type: 'paragraph',
+        content: 'Start writing your article here...',
+        settings: {}
+    }];
+}
+
+function renderBlocks() {
+    console.log('Rendering blocks...', blockEditor.blocks.length);
+    
+    const container = document.getElementById('blockEditor');
+    if (!container) {
+        console.error('Block editor container not found!');
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    blockEditor.blocks.forEach((block, index) => {
+        const blockEl = createBlockElement(block, index);
+        container.appendChild(blockEl);
+    });
+    
+    console.log('Blocks rendered successfully');
+}
+
+function createBlockElement(block, index) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'block-wrapper';
+    wrapper.setAttribute('data-block-id', block.id);
+    wrapper.setAttribute('data-block-type', block.type);
+    
+    const blockHtml = `
+        <div class="block-controls">
+            <div class="block-type-indicator">
+                ${getBlockIcon(block.type)} ${getBlockLabel(block.type)}
+            </div>
+            <div class="block-actions">
+                <button type="button" class="btn-block-action" onclick="moveBlockUp(${index})" ${index === 0 ? 'disabled' : ''} title="Move Up">
+                    <i class="fas fa-chevron-up"></i>
+                </button>
+                <button type="button" class="btn-block-action" onclick="moveBlockDown(${index})" ${index === blockEditor.blocks.length - 1 ? 'disabled' : ''} title="Move Down">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <button type="button" class="btn-block-action" onclick="duplicateBlock(${index})" title="Duplicate">
+                    <i class="fas fa-copy"></i>
+                </button>
+                <button type="button" class="btn-block-action btn-danger" onclick="deleteBlock(${index})" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+        <div class="block-content">
+            ${renderBlockContent(block)}
+        </div>
+    `;
+    
+    wrapper.innerHTML = blockHtml;
+    return wrapper;
+}
+
+function renderBlockContent(block) {
+    switch (block.type) {
+        case 'paragraph':
+            return `<div class="block-paragraph" contenteditable="true" data-placeholder="Type your paragraph here..." onblur="updateBlockContent('${block.id}', this.innerHTML)" onkeydown="handleBlockKeydown(event, '${block.id}')">${block.content}</div>`;
+        
+        case 'heading':
+            const level = block.settings.level || 2;
+            return `
+                <div class="block-heading-wrapper">
+                    <select class="heading-level" onchange="updateHeadingLevel('${block.id}', this.value)">
+                        <option value="1" ${level === 1 ? 'selected' : ''}>H1</option>
+                        <option value="2" ${level === 2 ? 'selected' : ''}>H2</option>
+                        <option value="3" ${level === 3 ? 'selected' : ''}>H3</option>
+                        <option value="4" ${level === 4 ? 'selected' : ''}>H4</option>
+                        <option value="5" ${level === 5 ? 'selected' : ''}>H5</option>
+                        <option value="6" ${level === 6 ? 'selected' : ''}>H6</option>
+                    </select>
+                    <h${level} class="block-heading" contenteditable="true" data-placeholder="Your heading here" onblur="updateBlockContent('${block.id}', this.innerHTML)">${block.content}</h${level}>
+                </div>
+            `;
+        
+        case 'quote':
+            return `<blockquote class="block-quote" contenteditable="true" data-placeholder="Your quote here..." onblur="updateBlockContent('${block.id}', this.innerHTML)">${block.content}</blockquote>`;
+        
+        case 'list':
+            const isOrdered = block.settings.ordered || false;
+            const listItems = block.content.split('\n').filter(item => item.trim());
+            const ListTag = isOrdered ? 'ol' : 'ul';
+            return `
+                <div class="block-list-wrapper">
+                    <select class="list-type" onchange="updateListType('${block.id}', this.value)">
+                        <option value="false" ${!isOrdered ? 'selected' : ''}>Bulleted List</option>
+                        <option value="true" ${isOrdered ? 'selected' : ''}>Numbered List</option>
+                    </select>
+                    <${ListTag} class="block-list" data-block-id="${block.id}">
+                        ${listItems.map(item => `<li contenteditable="true" onblur="updateListContent('${block.id}')">${item}</li>`).join('')}
+                    </${ListTag}>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="addListItem('${block.id}')">Add Item</button>
+                </div>
+            `;
+        
+        case 'image':
+            return `
+                <div class="block-image-wrapper">
+                    <div class="image-upload-controls">
+                        <div class="upload-tabs">
+                            <button type="button" class="upload-tab ${!block.content.startsWith('http') ? 'active' : ''}" onclick="switchImageTab('${block.id}', 'upload')">
+                                <i class="fas fa-upload"></i> Upload Image
+                            </button>
+                            <button type="button" class="upload-tab ${block.content.startsWith('http') ? 'active' : ''}" onclick="switchImageTab('${block.id}', 'url')">
+                                <i class="fas fa-link"></i> Image URL
+                            </button>
+                        </div>
+                        
+                        <div class="upload-content">
+                            <div class="upload-section ${!block.content.startsWith('http') ? 'active' : ''}" data-tab="upload">
+                                <input type="file" 
+                                       id="imageUpload_${block.id}" 
+                                       accept="image/*" 
+                                       onchange="handleImageUpload('${block.id}', this)"
+                                       style="display: none;">
+                                <button type="button" class="btn btn-primary upload-btn" onclick="document.getElementById('imageUpload_${block.id}').click()">
+                                    <i class="fas fa-camera"></i> Choose Image
+                                </button>
+                                <p class="upload-hint">Upload JPG, PNG, GIF images up to 5MB</p>
+                            </div>
+                            
+                            <div class="upload-section ${block.content.startsWith('http') ? 'active' : ''}" data-tab="url">
+                                <input type="url" 
+                                       class="form-control" 
+                                       placeholder="Enter image URL (https://...)" 
+                                       value="${block.content.startsWith('http') ? block.content : ''}" 
+                                       onblur="updateBlockContent('${block.id}', this.value)"
+                                       onpaste="handleImagePaste('${block.id}', event)">
+                                <p class="upload-hint">Paste an image URL from the web</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="image-preview-container">
+                        ${block.content && (block.content.startsWith('http') || block.content.startsWith('/uploads/')) ? 
+                            `<div class="image-preview-wrapper">
+                                <img src="${block.content}" alt="Article image" class="block-image-preview" onerror="handleImageError('${block.id}')">
+                                <div class="image-overlay">
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="removeImage('${block.id}')" title="Remove Image">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('imageUpload_${block.id}').click()" title="Replace Image">
+                                        <i class="fas fa-sync"></i>
+                                    </button>
+                                </div>
+                            </div>` : 
+                            `<div class="image-placeholder" onclick="document.getElementById('imageUpload_${block.id}').click()">
+                                <i class="fas fa-image"></i>
+                                <p>Click to upload an image<br>or use the controls above</p>
+                            </div>`
+                        }
+                    </div>
+                    
+                    ${block.content ? `
+                        <div class="image-settings">
+                            <label>Alt Text:</label>
+                            <input type="text" 
+                                   class="form-control form-control-sm" 
+                                   placeholder="Describe the image for accessibility" 
+                                   value="${block.settings.alt || ''}"
+                                   onblur="updateImageAlt('${block.id}', this.value)">
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        
+        case 'separator':
+            return `<hr class="block-separator">`;
+        
+        default:
+            return `<div class="block-paragraph" contenteditable="true" data-placeholder="Type your content here..." onblur="updateBlockContent('${block.id}', this.innerHTML)">${block.content}</div>`;
+    }
+}
+
+function getBlockIcon(type) {
+    const icons = {
+        'paragraph': '<i class="fas fa-paragraph"></i>',
+        'heading': '<i class="fas fa-heading"></i>',
+        'quote': '<i class="fas fa-quote-left"></i>',
+        'list': '<i class="fas fa-list"></i>',
+        'image': '<i class="fas fa-image"></i>',
+        'video': '<i class="fas fa-video"></i>',
+        'embed': '<i class="fas fa-code"></i>',
+        'separator': '<i class="fas fa-minus"></i>',
+        'spacer': '<i class="fas fa-arrows-alt-v"></i>'
+    };
+    return icons[type] || '';
+}
+
+function getBlockLabel(type) {
+    const labels = {
+        'paragraph': 'Paragraph',
+        'heading': 'Heading',
+        'quote': 'Quote',
+        'list': 'List',
+        'image': 'Image',
+        'video': 'Video',
+        'embed': 'Embed',
+        'separator': 'Separator',
+        'spacer': 'Spacer'
+    };
+    return labels[type] || '';
+}
+
+function updateBlockContent(blockId, content) {
+    const block = blockEditor.blocks.find(b => b.id === blockId);
+    if (block) {
+        block.content = content;
+        renderBlocks();
+    }
+}
+
+function updateHeadingLevel(blockId, level) {
+    const block = blockEditor.blocks.find(b => b.id === blockId);
+    if (block) {
+        block.settings.level = parseInt(level);
+        renderBlocks();
+    }
+}
+
+function updateListType(blockId, type) {
+    const block = blockEditor.blocks.find(b => b.id === blockId);
+    if (block) {
+        block.settings.ordered = type === 'true';
+        renderBlocks();
+    }
+}
+
+function updateListContent(blockId) {
+    const block = blockEditor.blocks.find(b => b.id === blockId);
+    if (block) {
+        const content = block.content.split('\n').filter(item => item.trim()).join('\n');
+        block.content = content;
+        renderBlocks();
+    }
+}
+
+function deleteArticle(articleId) {
+    if (confirm('Are you sure you want to delete this article? This action cannot be undone.')) {
+        fetch('/api/articles/' + articleId, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Article deleted successfully!');
+                window.location.href = '/blog';
+            } else {
+                alert('Error deleting article: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting article');
+        });
+    }
+}
+
+// Additional Block Editor Functions
+function showBlockSelector() {
+    const selector = document.getElementById('blockSelector');
+    if (selector) {
+        selector.style.display = 'block';
+    }
+}
+
+function hideBlockSelector() {
+    const selector = document.getElementById('blockSelector');
+    if (selector) {
+        selector.style.display = 'none';
+    }
+}
+
+function moveBlockUp(index) {
+    if (index > 0) {
+        const blocks = blockEditor.blocks;
+        [blocks[index - 1], blocks[index]] = [blocks[index], blocks[index - 1]];
+        renderBlocks();
+    }
+}
+
+function moveBlockDown(index) {
+    if (index < blockEditor.blocks.length - 1) {
+        const blocks = blockEditor.blocks;
+        [blocks[index], blocks[index + 1]] = [blocks[index + 1], blocks[index]];
+        renderBlocks();
+    }
+}
+
+function duplicateBlock(index) {
+    const block = blockEditor.blocks[index];
+    const newBlock = {
+        ...block,
+        id: 'block_' + (++blockEditor.currentBlockId)
+    };
+    blockEditor.blocks.splice(index + 1, 0, newBlock);
+    renderBlocks();
+    updateBlockCount();
+}
+
+function deleteBlock(index) {
+    if (blockEditor.blocks.length > 1) {
+        blockEditor.blocks.splice(index, 1);
+        renderBlocks();
+        updateBlockCount();
+    } else {
+        alert('Cannot delete the last block. Add another block first.');
+    }
+}
+
+function clearAllBlocks() {
+    if (confirm('Are you sure you want to clear all blocks?')) {
+        blockEditor.blocks = [];
+        addDefaultBlock();
+        renderBlocks();
+        updateBlockCount();
+    }
+}
+
+function updateBlockCount() {
+    document.getElementById('blockCount').textContent = blockEditor.blocks.length;
+}
+
+function focusBlock(blockId) {
+    const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (blockEl) {
+        const editableEl = blockEl.querySelector('[contenteditable="true"]');
+        if (editableEl) {
+            editableEl.focus();
+        }
+    }
+}
+
+function addListItem(blockId) {
+    const block = blockEditor.blocks.find(b => b.id === blockId);
+    if (block) {
+        block.content += '\nNew item';
+        renderBlocks();
+    }
+}
+
+function togglePreviewMode() {
+    const blockEditor = document.getElementById('blockEditor');
+    const previewMode = document.getElementById('previewMode');
+    const btn = document.getElementById('previewModeBtn');
+    
+    if (previewMode.style.display === 'none') {
+        updateContentFromBlocks();
+        generatePreview();
+        blockEditor.style.display = 'none';
+        previewMode.style.display = 'block';
+        btn.innerHTML = '<i class="fas fa-edit"></i> Edit';
+    } else {
+        blockEditor.style.display = 'block';
+        previewMode.style.display = 'none';
+        btn.innerHTML = '<i class="fas fa-eye"></i> Preview';
+    }
+}
+
+function updateContentFromBlocks() {
+    console.log('🔄 Converting blocks to HTML...');
+    
+    if (!blockEditor.blocks || blockEditor.blocks.length === 0) {
+        console.log('⚠️ No blocks found, using default content');
+        const contentEl = document.getElementById('article-content');
+        if (contentEl) {
+            contentEl.value = '<p>Start writing your article here...</p>';
+        }
+        return;
+    }
+    
+    let html = '';
+    
+    blockEditor.blocks.forEach((block, index) => {
+        console.log(`📝 Processing block ${index + 1}:`, block.type, block.content ? `(${block.content.length} chars)` : '(empty)');
+        
+        try {
+            switch (block.type) {
+                case 'paragraph':
+                    if (block.content && block.content.trim()) {
+                        html += `<p>${block.content}</p>\n`;
+                    }
+                    break;
+                case 'heading':
+                    if (block.content && block.content.trim()) {
+                        const level = block.settings.level || 2;
+                        html += `<h${level}>${block.content}</h${level}>\n`;
+                    }
+                    break;
+                case 'quote':
+                    if (block.content && block.content.trim()) {
+                        html += `<blockquote>${block.content}</blockquote>\n`;
+                    }
+                    break;
+                case 'list':
+                    if (block.content && block.content.trim()) {
+                        const listItems = block.content.split('\n').filter(item => item.trim());
+                        if (listItems.length > 0) {
+                            const listTag = block.settings.ordered ? 'ol' : 'ul';
+                            html += `<${listTag}>\n`;
+                            listItems.forEach(item => {
+                                html += `  <li>${item}</li>\n`;
+                            });
+                            html += `</${listTag}>\n`;
+                        }
+                    }
+                    break;
+                case 'image':
+                    if (block.content && (block.content.startsWith('http') || block.content.startsWith('/uploads/') || block.content.startsWith('/static/'))) {
+                        const altText = block.settings.alt || 'Article image';
+                        html += `<img src="${block.content}" alt="${altText}" style="max-width: 100%; height: auto; border-radius: 8px; margin: 1rem 0;">\n`;
+                    }
+                    break;
+                case 'separator':
+                    html += '<hr>\n';
+                    break;
+                default:
+                    if (block.content && block.content.trim()) {
+                        html += `<p>${block.content}</p>\n`;
+                    }
+                    break;
+            }
+        } catch (error) {
+            console.error(`❌ Error processing block ${index + 1}:`, error);
+            // Fallback: treat as paragraph
+            if (block.content && block.content.trim()) {
+                html += `<p>${block.content}</p>\n`;
+            }
+        }
+    });
+    
+    // Ensure we have some content
+    if (!html.trim()) {
+        html = '<p>Start writing your article here...</p>\n';
+        console.log('⚠️ No content generated, using fallback');
+    }
+    
+    const contentEl = document.getElementById('article-content');
+    if (contentEl) {
+        contentEl.value = html;
+        console.log('✅ Content updated:', html.length, 'characters');
+        console.log('📄 Final HTML preview:', html.substring(0, 100) + (html.length > 100 ? '...' : ''));
+    } else {
+        console.error('❌ Content textarea not found!');
+    }
+}
+
+function generatePreview() {
+    const previewContent = document.getElementById('previewContent');
+    const content = document.getElementById('article-content').value;
+    previewContent.innerHTML = content || '<p class="text-muted">No content to preview</p>';
+}
+
+function parseContentIntoBlocks(html) {
+    console.log('Parsing HTML into blocks...');
+    
+    // Simple HTML to blocks parser
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    const elements = Array.from(tempDiv.children);
+    
+    if (elements.length === 0) {
+        // If no block elements, treat as single paragraph
+        addDefaultBlock();
+        if (html.trim()) {
+            blockEditor.blocks[0].content = html.trim();
+        }
+        return;
+    }
+    
+    blockEditor.blocks = [];
+    
+    elements.forEach(el => {
+        const blockType = getBlockTypeFromElement(el);
+        const content = el.textContent || el.innerHTML;
+        
+        const blockId = 'block_' + (++blockEditor.currentBlockId);
+        const block = {
+            id: blockId,
+            type: blockType,
+            content: content.trim(),
+            settings: getSettingsFromElement(el, blockType)
+        };
+        
+        blockEditor.blocks.push(block);
+    });
+    
+    console.log('Parsed blocks:', blockEditor.blocks.length);
+}
+
+function getBlockTypeFromElement(element) {
+    const tagName = element.tagName.toLowerCase();
+    
+    if (tagName.match(/^h[1-6]$/)) return 'heading';
+    if (tagName === 'p') return 'paragraph';
+    if (tagName === 'blockquote') return 'quote';
+    if (tagName === 'ul' || tagName === 'ol') return 'list';
+    if (tagName === 'hr') return 'separator';
+    
+    return 'paragraph'; // default
+}
+
+function getSettingsFromElement(element, blockType) {
+    const settings = {};
+    
+    if (blockType === 'heading') {
+        const level = parseInt(element.tagName.substring(1));
+        settings.level = level;
+    }
+    
+    if (blockType === 'list') {
+        settings.ordered = element.tagName.toLowerCase() === 'ol';
+    }
+    
+    return settings;
+}
+
+function handleBlockKeydown(event, blockId) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        const blockIndex = blockEditor.blocks.findIndex(b => b.id === blockId);
+        addBlock('paragraph', '', blockIndex + 1);
+    }
+}
+
+function handleFormSubmission(e) {
+    e.preventDefault();
+    
+    console.log('🚀 Form submission started...');
+    
+    // Ensure blocks have content before processing
+    ensureBlocksHaveContent();
+    
+    // Convert blocks to content before submission
+    console.log('📝 Converting blocks to HTML...');
+    updateContentFromBlocks();
+    
+    // Get form elements
+    const titleEl = document.getElementById('title');
+    const contentEl = document.getElementById('article-content');
+    const summaryEl = document.getElementById('summary');
+    const authorEl = document.getElementById('author');
+    const tagsEl = document.getElementById('tags');
+    const statusEl = document.getElementById('status');
+    const saveBtn = document.getElementById('saveBtn');
+    
+    // Debug content conversion
+    console.log('📄 Content element:', contentEl ? 'Found' : 'NOT FOUND');
+    console.log('📄 Current content length:', contentEl ? contentEl.value.length : 'N/A');
+    console.log('📄 Block count:', blockEditor.blocks.length);
+    
+    // Validation
+    if (!titleEl.value.trim()) {
+        alert('Please enter a title');
+        titleEl.focus();
+        return;
+    }
+    
+    // Ensure we have content - if empty, force update
+    if (!contentEl.value.trim()) {
+        console.log('⚠️ Content is empty, forcing content update...');
+        updateContentFromBlocks();
+        
+        // If still empty after update, provide default content
+        if (!contentEl.value.trim()) {
+            if (blockEditor.blocks.length > 0) {
+                // Try manual conversion
+                let manualContent = '';
+                blockEditor.blocks.forEach(block => {
+                    if (block.content && block.content.trim()) {
+                        manualContent += `<p>${block.content}</p>\n`;
+                    }
+                });
+                contentEl.value = manualContent || '<p>Article content</p>';
+                console.log('🔧 Used manual content conversion:', contentEl.value.length, 'characters');
+            } else {
+                contentEl.value = '<p>Article content</p>';
+                console.log('🔧 Used fallback content');
+            }
+        }
+    }
+    
+    // Content validation after conversion
+    if (!contentEl.value.trim()) {
+        alert('Please add some content to your article before publishing');
+        console.error('❌ Content validation failed - no content available');
+        return;
+    }
+    
+    // Make sure the content textarea is not hidden for validation
+    contentEl.style.display = 'block';
+    contentEl.style.visibility = 'hidden';
+    contentEl.style.position = 'absolute';
+    contentEl.style.left = '-9999px';
+    
+    const formData = {
+        title: titleEl.value.trim(),
+        content: contentEl.value,
+        summary: summaryEl.value.trim(),
+        author: authorEl.value.trim() || 'MLB Analyst',
+        tags: tagsEl.value.trim(),
+        status: statusEl.value
+    };
+    
+    console.log('📤 Submitting form data:', {
+        ...formData,
+        content: `${formData.content.length} characters`
+    });
+    
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    
+    // Determine if editing
+    const isEditing = window.location.pathname.includes('/edit');
+    let url = '/api/articles';
+    let method = 'POST';
+    
+    if (isEditing) {
+        const pathParts = window.location.pathname.split('/');
+        const articleId = pathParts[pathParts.length - 2];
+        url = '/api/articles/' + articleId;
+        method = 'PUT';
+    }
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('✅ Article saved successfully!');
+            alert(isEditing ? 'Article updated successfully!' : 'Article created successfully!');
+            window.location.href = '/blog';
+        } else {
+            console.error('❌ Save failed:', data.error);
+            alert('Error: ' + (data.error || 'Unknown error occurred'));
+        }
+    })
+    .catch(error => {
+        console.error('❌ Network error:', error);
+        alert('Error saving article: ' + error.message);
+    })
+    .finally(() => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> ' + (isEditing ? 'Update Article' : 'Publish Article');
+        
+        // Hide the content textarea again
+        contentEl.style.display = 'none';
+    });
+}
+
+function showFallbackEditor() {
+    console.log('Showing fallback text editor...');
+    const container = document.getElementById('blockEditor');
+    if (container) {
+        container.innerHTML = `
+            <div class="fallback-editor">
+                <p><strong>Block editor failed to load. Using simple text editor:</strong></p>
+                <textarea class="form-control" style="height: 300px; font-family: inherit;" placeholder="Write your article content here..."></textarea>
+            </div>
+        `;
+    }
+}
+
+// Block management functions
+function addBlock(type, content = '', position = -1) {
+    console.log('Adding block:', type);
+    
+    const blockId = 'block_' + (++blockEditor.currentBlockId);
+    
+    const block = {
+        id: blockId,
+        type: type,
+        content: content || getDefaultContent(type),
+        settings: getDefaultSettings(type)
+    };
+    
+    if (position === -1) {
+        blockEditor.blocks.push(block);
+    } else {
+        blockEditor.blocks.splice(position, 0, block);
+    }
+    
+    hideBlockSelector();
+    renderBlocks();
+    updateBlockCount();
+    
+    // Focus the new block
+    setTimeout(() => {
+        focusBlock(blockId);
+    }, 100);
+}
+
+function getDefaultContent(type) {
+    const defaults = {
+        'paragraph': 'Type your paragraph here...',
+        'heading': 'Your heading here',
+        'quote': 'Your quote here...',
+        'list': 'List item 1\nList item 2\nList item 3',
+        'image': '',
+        'separator': ''
+    };
+    return defaults[type] || 'Type your content here...';
+}
+
+function getDefaultSettings(type) {
+    const defaults = {
+        'heading': { level: 2 },
+        'list': { ordered: false }
+    };
+    return defaults[type] || {};
+}
+
+function focusBlock(blockId) {
+    const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (blockEl) {
+        const editableEl = blockEl.querySelector('[contenteditable="true"]');
+        if (editableEl) {
+            editableEl.focus();
+        }
+    }
+}
+
+// Image Block Functions
+function switchImageTab(blockId, tabType) {
+    const block = blockEditor.blocks.find(b => b.id === blockId);
+    if (!block) return;
+    
+    const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (!blockEl) return;
+    
+    // Update tab appearance
+    const tabs = blockEl.querySelectorAll('.upload-tab');
+    const sections = blockEl.querySelectorAll('.upload-section');
+    
+    tabs.forEach(tab => tab.classList.remove('active'));
+    sections.forEach(section => section.classList.remove('active'));
+    
+    blockEl.querySelector(`[onclick*="${tabType}"]`).classList.add('active');
+    blockEl.querySelector(`[data-tab="${tabType}"]`).classList.add('active');
+}
+
+function handleImageUpload(blockId, input) {
+    const file = input.files[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+    }
+    
+    // Validate file size (5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
+        alert('Image file size must be less than 5MB');
+        return;
+    }
+    
+    console.log('Uploading image:', file.name, 'Size:', file.size);
+    
+    // Show upload progress
+    showImageUploadProgress(blockId, true);
+    
+    // Create FormData for upload
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('blockId', blockId);
+    
+    // Upload to server
+    fetch('/api/upload-image', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        showImageUploadProgress(blockId, false);
+        
+        if (data.success) {
+            console.log('Image uploaded successfully:', data.url);
+            updateBlockContent(blockId, data.url);
+            renderBlocks();
+        } else {
+            console.error('Upload failed:', data.error);
+            alert('Upload failed: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        showImageUploadProgress(blockId, false);
+        console.error('Upload error:', error);
+        alert('Upload failed: ' + error.message);
+    });
+}
+
+function showImageUploadProgress(blockId, show) {
+    const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (!blockEl) return;
+    
+    const uploadBtn = blockEl.querySelector('.upload-btn');
+    if (!uploadBtn) return;
+    
+    if (show) {
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+    } else {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fas fa-camera"></i> Choose Image';
+    }
+}
+
+function handleImagePaste(blockId, event) {
+    // Handle paste events for URLs
+    setTimeout(() => {
+        const url = event.target.value;
+        if (url && (url.startsWith('http') || url.startsWith('https'))) {
+            updateBlockContent(blockId, url);
+            renderBlocks();
+        }
+    }, 100);
+}
+
+function handleImageError(blockId) {
+    console.error('Image failed to load for block:', blockId);
+    const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (blockEl) {
+        const img = blockEl.querySelector('.block-image-preview');
+        if (img) {
+            img.style.display = 'none';
+            img.insertAdjacentHTML('afterend', '<div class="image-error"><i class="fas fa-exclamation-triangle"></i> Image failed to load</div>');
+        }
+    }
+}
+
+function removeImage(blockId) {
+    if (confirm('Are you sure you want to remove this image?')) {
+        updateBlockContent(blockId, '');
+        renderBlocks();
+    }
+}
+
+function updateImageAlt(blockId, altText) {
+    const block = blockEditor.blocks.find(b => b.id === blockId);
+    if (block) {
+        if (!block.settings) block.settings = {};
+        block.settings.alt = altText;
+    }
+}
+
+function ensureBlocksHaveContent() {
+    console.log('🔍 Checking blocks for content...');
+    
+    // If no blocks, add a default one
+    if (!blockEditor.blocks || blockEditor.blocks.length === 0) {
+        console.log('📝 No blocks found, adding default block');
+        addDefaultBlock();
+        renderBlocks();
+        return;
+    }
+    
+    // Check if any block has content
+    let hasContentBlocks = false;
+    blockEditor.blocks.forEach((block, index) => {
+        if (block.content && block.content.trim()) {
+            hasContentBlocks = true;
+        }
+    });
+    
+    // If no blocks have content, ensure the first one does
+    if (!hasContentBlocks && blockEditor.blocks.length > 0) {
+        console.log('⚠️ No blocks have content, adding default content to first block');
+        blockEditor.blocks[0].content = 'Start writing your article here...';
+        renderBlocks();
+    }
+    
+    console.log('✅ Block content check complete');
+}
+</script>
+
+<style>
+    .form-group label {
+        font-weight: 600;
+        color: #495057;
+    }
+    
+    .card {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    textarea {
+        min-height: 100px;
+    }
+    
+    #article-content {
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 14px;
+    }
+
+    .form-control:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+</style>
+
+<!-- WordPress-style Editor CSS -->
+<style>
+.form-group label {
+    font-weight: 600;
+    color: #495057;
+}
+
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+/* Gutenberg-style Block Editor */
+.block-editor-container {
+    border: 1px solid #ddd;
+    border-radius: 0.375rem;
+    background: #fff;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    min-height: 500px;
+}
+
+.block-editor-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.block-count {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.editor-actions .btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: white;
+    margin-left: 0.5rem;
+}
+
+.editor-actions .btn:hover {
+    background: rgba(255,255,255,0.2);
+    border-color: rgba(255,255,255,0.3);
+}
+
+.block-editor-main {
+    padding: 2rem;
+    min-height: 400px;
+    background: #fafafa;
+}
+
+.block-wrapper {
+    margin-bottom: 1.5rem;
+    background: white;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.block-wrapper:hover {
+    border-color: #007bff;
+    box-shadow: 0 4px 12px rgba(0,123,255,0.15);
+}
+
+.block-wrapper.selected {
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+}
+
+.block-controls {
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    padding: 0.75rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+    border-radius: 8px 8px 0 0;
+}
+
+.block-type-indicator {
+    font-weight: 600;
+    color: #495057;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.block-type-indicator i {
+    color: #007bff;
+}
+
+.block-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.btn-block-action {
+    background: none;
+    border: 1px solid #dee2e6;
+    color: #6c757d;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+    cursor: pointer;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.btn-block-action:hover:not(:disabled) {
+    background: #007bff;
+    border-color: #007bff;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,123,255,0.3);
+}
+
+.btn-block-action.btn-danger:hover:not(:disabled) {
+    background: #dc3545;
+    border-color: #dc3545;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(220,53,69,0.3);
+}
+
+.btn-block-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #f8f9fa;
+}
+
+.btn-block-action i {
+    font-size: 12px;
+    line-height: 1;
+}
+
+.block-content {
+    padding: 1.5rem;
+}
+
+/* Block-specific styles */
+.block-paragraph {
+    min-height: 60px;
+    line-height: 1.6;
+    font-size: 16px;
+    padding: 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    transition: border-color 0.2s;
+}
+
+.block-paragraph:focus {
+    outline: none;
+    border-color: #007bff;
+    background: #f8f9ff;
+}
+
+.block-paragraph[data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: #adb5bd;
+    font-style: italic;
+}
+
+.block-heading {
+    margin: 0;
+    padding: 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: border-color 0.2s;
+}
+
+.block-heading:focus {
+    outline: none;
+    border-color: #007bff;
+    background: #f8f9ff;
+}
+
+.block-heading[data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: #adb5bd;
+    font-style: italic;
+    font-weight: normal;
+}
+
+.block-heading-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.heading-level {
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    background: white;
+}
+
+.block-quote {
+    margin: 0;
+    padding: 1rem 1.5rem;
+    border-left: 4px solid #007bff;
+    background: #f8f9ff;
+    font-style: italic;
+    color: #495057;
+    border-radius: 0 4px 4px 0;
+}
+
+.block-quote:focus {
+    outline: none;
+    background: #e6f3ff;
+}
+
+.block-quote[data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: #adb5bd;
+}
+
+.block-list-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.list-type {
+    width: fit-content;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    background: white;
+}
+
+.block-list {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.block-list li {
+    margin-bottom: 0.5rem;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.block-list li:focus {
+    outline: none;
+    background: #f8f9ff;
+}
+
+.block-image-wrapper,
+.block-video-wrapper,
+.block-embed-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.block-image-preview {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.image-placeholder,
+.video-placeholder,
+.embed-placeholder {
+    text-align: center;
+    padding: 3rem;
+    background: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    color: #6c757d;
+}
+
+.image-placeholder i,
+.video-placeholder i,
+.embed-placeholder i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    color: #adb5bd;
+}
+
+.block-separator {
+    border: none;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #dee2e6, transparent);
+    margin: 2rem 0;
+}
+
+.block-spacer {
+    background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        #f8f9fa 10px,
+        #f8f9fa 20px
+    );
+    border-radius: 4px;
+    position: relative;
+}
+
+.block-spacer-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.spacer-height {
+    width: 200px;
+}
+
+/* Add Block Interface */
+.add-block-container {
+    text-align: center;
+    padding: 2rem;
+    border-top: 1px solid #e9ecef;
+    background: #f8f9fa;
+    position: relative;
+    margin-top: 1rem;
+}
+
+.add-block-btn {
+    background: #007bff;
+    color: white;
+    border: none;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0,123,255,0.3);
+    border: 3px solid white;
+    outline: 2px solid #007bff;
+    font-weight: bold;
+}
+
+.add-block-btn:hover {
+    background: #0056b3;
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(0,123,255,0.4);
+    outline-color: #0056b3;
+}
+
+.add-block-btn:active {
+    transform: scale(1.05);
+}
+
+.block-selector {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    width: 400px;
+    max-width: 90vw;
+    z-index: 1000;
+    margin-bottom: 1rem;
+}
+
+.block-selector-header {
+    padding: 1rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+}
+
+.block-selector-header h6 {
+    margin: 0;
+    font-weight: 600;
+    color: #495057;
+}
+
+.btn-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #6c757d;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.btn-close:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.block-options {
+    padding: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.block-category {
+    margin-bottom: 1.5rem;
+}
+
+.block-category:last-child {
+    margin-bottom: 0;
+}
+
+.block-category h6 {
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.block-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.75rem;
+}
+
+.block-option {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 1rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+}
+
+.block-option:hover {
+    border-color: #007bff;
+    background: #f8f9ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,123,255,0.15);
+}
+
+.block-option i {
+    font-size: 1.25rem;
+    color: #007bff;
+}
+
+.block-option span {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #495057;
+}
+
+/* Preview Mode */
+.preview-mode {
+    padding: 2rem;
+    background: white;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+}
+
+.preview-content h1,
+.preview-content h2,
+.preview-content h3,
+.preview-content h4,
+.preview-content h5,
+.preview-content h6 {
+    font-weight: 600;
+    margin: 1.5rem 0 1rem 0;
+    color: #2c3e50;
+}
+
+.preview-content h1 {
+    font-size: 2rem;
+    border-bottom: 2px solid #ecf0f1;
+    padding-bottom: 0.5rem;
+}
+
+.preview-content h2 {
+    font-size: 1.5rem;
+}
+
+.preview-content p {
+    margin-bottom: 1rem;
+}
+
+.preview-content blockquote {
+    margin: 1.5rem 0;
+    padding: 1rem 1.5rem;
+    border-left: 4px solid #007bff;
+    background: #f8f9ff;
+    font-style: italic;
+}
+
+.preview-content ul,
+.preview-content ol {
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+}
+
+.preview-content li {
+    margin-bottom: 0.5rem;
+}
+
+.preview-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: 1rem 0;
+}
+
+.preview-content iframe {
+    width: 100%;
+    height: 400px;
+    border-radius: 8px;
+    margin: 1rem 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .block-editor-main {
+        padding: 1rem;
+    }
+    
+    .block-content {
+        padding: 1rem;
+    }
+    
+    .block-selector {
+        width: 350px;
+    }
+    
+    .block-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    }
+    
+    .block-heading-wrapper {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+}
+
+/* Animation effects */
+.block-wrapper {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.block-selector {
+    animation: popIn 0.2s ease-out;
+}
+
+@keyframes popIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+}
+
+/* Image Block Styles */
+.block-image-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.image-upload-controls {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.upload-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 0.5rem;
+}
+
+.upload-tab {
+    background: none;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #6c757d;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.upload-tab:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.upload-tab.active {
+    background: #007bff;
+    color: white;
+}
+
+.upload-content {
+    position: relative;
+}
+
+.upload-section {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.upload-section.active {
+    display: flex;
+}
+
+.upload-btn {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    border: 2px dashed #007bff;
+    background: rgba(0, 123, 255, 0.1);
+}
+
+.upload-btn:hover:not(:disabled) {
+    background: #007bff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.upload-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.upload-hint {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin: 0;
+    text-align: center;
+}
+
+.image-preview-container {
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.image-preview-wrapper {
+    position: relative;
+    display: inline-block;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s;
+}
+
+.image-preview-wrapper:hover {
+    transform: scale(1.02);
+}
+
+.block-image-preview {
+    max-width: 100%;
+    max-height: 400px;
+    height: auto;
+    display: block;
+    border-radius: 8px;
+}
+
+.image-overlay {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.image-preview-wrapper:hover .image-overlay {
+    opacity: 1;
+}
+
+.image-overlay .btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.image-placeholder {
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 3rem 2rem;
+    text-align: center;
+    color: #6c757d;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #f8f9fa;
+    width: 100%;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.image-placeholder:hover {
+    border-color: #007bff;
+    background: #f0f8ff;
+    color: #007bff;
+    transform: translateY(-2px);
+}
+
+.image-placeholder i {
+    font-size: 3rem;
+    opacity: 0.5;
+}
+
+.image-placeholder p {
+    margin: 0;
+    font-weight: 500;
+}
+
+.image-settings {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
+.image-settings label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.image-error {
+    text-align: center;
+    padding: 2rem;
+    color: #dc3545;
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.image-error i {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+/* Upload Progress Animation */
+.upload-btn .fa-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %} 

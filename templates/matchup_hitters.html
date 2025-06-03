@@ -1,0 +1,159 @@
+{% extends "layout.html" %}
+{% block title %}MLB HR Handicapper - {{ team_name }} Hitters{% endblock %}
+
+{% block content %}
+<h1>{{ team_name }} - Top HR Hitters</h1>
+<p>Displaying the top 10 home run hitters for {{ team_name }} in the {{ season }} season, with advanced metrics.</p>
+
+<p>
+    <a href="{{ url_for('pitchers_page') }}" class="btn btn-sm btn-secondary">
+        &larr; Back to Pitcher Stats
+    </a>
+</p>
+
+{% if error_message %}
+<div class="alert alert-warning">{{ error_message }}</div>
+{% endif %}
+
+<div id="matchup-container">
+    <div class="text-center my-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Loading...</span>
+        </div>
+        <p>Loading matchup data...</p>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Fetch matchup data from API
+    fetch('/api/matchup_hitters/{{ team_id }}')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('matchup-container');
+            
+            // Clear loading indicator
+            container.innerHTML = '';
+            
+            // Handle errors
+            if (data.error) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-warning';
+                errorDiv.textContent = data.error;
+                container.appendChild(errorDiv);
+                return;
+            }
+            
+            // Check if we have data
+            if (!data.matchup_data || data.matchup_data.length === 0) {
+                const noDataDiv = document.createElement('div');
+                noDataDiv.className = 'alert alert-info';
+                noDataDiv.textContent = 'No hitter data available for this team.';
+                container.appendChild(noDataDiv);
+                return;
+            }
+            
+            // Create table
+            const table = document.createElement('table');
+            table.className = 'table table-striped table-hover';
+            
+            // Add table header
+            const thead = document.createElement('thead');
+            thead.innerHTML = `
+                <tr>
+                    <th>Player</th>
+                    <th>At-Bats</th>
+                    <th>Home Runs</th>
+                    <th>OPS</th>
+                    <th>ISO</th>
+                    <th>BABIP</th>
+                    <th>HR/PA</th>
+                </tr>
+            `;
+            table.appendChild(thead);
+            
+            // Add table body
+            const tbody = document.createElement('tbody');
+            data.matchup_data.forEach(hitter => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${hitter.name}</td>
+                    <td>${hitter.at_bats}</td>
+                    <td>${hitter.home_runs}</td>
+                    <td>${hitter.ops}</td>
+                    <td>${hitter.iso}</td>
+                    <td>${hitter.babip}</td>
+                    <td>${hitter.hr_pa}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            
+            // Add table to container
+            container.appendChild(table);
+            
+            // Add sorting functionality
+            const headers = table.querySelectorAll('th');
+            headers.forEach(function(header, index) {
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', function() {
+                    sortTable(table, index, header);
+                });
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching matchup data:', error);
+            const container = document.getElementById('matchup-container');
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    Error loading data. Please try again later.
+                </div>
+            `;
+        });
+        
+    // Sorting function
+    function sortTable(table, columnIndex, header) {
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        
+        // Get current sort direction
+        const isAscending = !header.classList.contains('asc');
+        
+        // Clear all headers classes
+        table.querySelectorAll('th').forEach(th => {
+            th.classList.remove('asc', 'desc');
+        });
+        
+        // Set new sort direction
+        header.classList.add(isAscending ? 'asc' : 'desc');
+        
+        // Sort rows
+        rows.sort((a, b) => {
+            let aValue = a.cells[columnIndex].textContent.trim();
+            let bValue = b.cells[columnIndex].textContent.trim();
+            
+            // Try to convert to numbers if possible
+            const aNum = parseFloat(aValue);
+            const bNum = parseFloat(bValue);
+            
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return isAscending ? aNum - bNum : bNum - aNum;
+            }
+            
+            // String comparison
+            return isAscending ? 
+                aValue.localeCompare(bValue) : 
+                bValue.localeCompare(aValue);
+        });
+        
+        // Remove existing rows
+        while (tbody.firstChild) {
+            tbody.removeChild(tbody.firstChild);
+        }
+        
+        // Append sorted rows
+        rows.forEach(row => tbody.appendChild(row));
+    }
+});
+</script>
+{% endblock %} 

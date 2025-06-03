@@ -1,0 +1,377 @@
+{% extends "layout.html" %}
+
+{% block title %}Login - Dinger Tuesday{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="text-center" id="form-header">Sign In to Dinger Tuesday</h3>
+            </div>
+            <div class="card-body">
+                <div id="auth-error" class="alert alert-danger" style="display: none;"></div>
+                <div id="auth-success" class="alert alert-success" style="display: none;"></div>
+                
+                <!-- Google Sign-In Button -->
+                <button id="google-signin-btn" class="btn btn-danger btn-block mb-3">
+                    <i class="fab fa-google mr-2"></i>
+                    <span id="google-btn-text">Continue with Google</span>
+                    <span id="google-loading" style="display: none;">
+                        <span class="spinner-border spinner-border-sm" role="status"></span> Signing in...
+                    </span>
+                </button>
+                
+                <div class="text-center mb-3">
+                    <span class="text-muted">or</span>
+                </div>
+                
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="email">Email address</label>
+                        <input type="email" class="form-control" id="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" class="form-control" id="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block" id="login-btn-submit">
+                        <span id="login-text">Sign In</span>
+                        <span id="login-loading" style="display: none;">
+                            <span class="spinner-border spinner-border-sm" role="status"></span> Signing in...
+                        </span>
+                    </button>
+                </form>
+                
+                <hr>
+                
+                <div class="text-center" id="signup-prompt">
+                    <p>Don't have an account? <a href="#" id="show-signup">Sign up here</a></p>
+                </div>
+                
+                <form id="signup-form" style="display: none;">
+                    <h4>Create Account</h4>
+                    
+                    <!-- Google Sign-Up Button (same as sign-in) -->
+                    <button id="google-signup-btn" class="btn btn-danger btn-block mb-3">
+                        <i class="fab fa-google mr-2"></i>
+                        <span>Sign up with Google</span>
+                    </button>
+                    
+                    <div class="text-center mb-3">
+                        <span class="text-muted">or</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="signup-email">Email address</label>
+                        <input type="email" class="form-control" id="signup-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-password">Password</label>
+                        <input type="password" class="form-control" id="signup-password" required>
+                        <small class="form-text text-muted">Password must be at least 6 characters long.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-password-confirm">Confirm Password</label>
+                        <input type="password" class="form-control" id="signup-password-confirm" required>
+                    </div>
+                    <button type="submit" class="btn btn-success btn-block" id="signup-btn-submit">
+                        <span id="signup-text">Create Account</span>
+                        <span id="signup-loading" style="display: none;">
+                            <span class="spinner-border spinner-border-sm" role="status"></span> Creating account...
+                        </span>
+                    </button>
+                    <p class="text-center mt-2"><a href="#" id="show-login">Back to login</a></p>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Font Awesome for Google icon -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+
+<script>
+// Wait for Firebase to load completely
+window.addEventListener('load', function() {
+    console.log('Window loaded, initializing Firebase...');
+    
+    // Firebase configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyDmw8XHzlBo2lB8X1rzyjQbgd5aRkRilv0",
+        authDomain: "dingertuesday-18a26.firebaseapp.com",
+        projectId: "dingertuesday-18a26",
+        storageBucket: "dingertuesday-18a26.firebasestorage.app",
+        messagingSenderId: "649904034928",
+        appId: "1:649904034928:web:03010b19c057bf4bcc10b5",
+        measurementId: "G-H0ZR5N8SS8"
+    };
+
+    // Check if Firebase is loaded
+    if (typeof firebase === 'undefined') {
+        console.error('Firebase not loaded!');
+        showError('Failed to load authentication system. Please refresh the page.');
+        return;
+    }
+
+    // Initialize Firebase
+    try {
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        console.log('Firebase initialized successfully');
+        
+        // Clear any existing auth state
+        auth.signOut().then(() => {
+            console.log('Cleared existing auth state');
+        }).catch(() => {
+            console.log('No existing auth state to clear');
+        });
+        
+        setupAuthHandlers(auth);
+    } catch (error) {
+        console.error('Firebase initialization error:', error);
+        showError('Failed to initialize authentication system.');
+    }
+});
+
+function setupAuthHandlers(auth) {
+    const loginForm = document.getElementById('login-form');
+    const signupForm = document.getElementById('signup-form');
+    const showSignup = document.getElementById('show-signup');
+    const showLogin = document.getElementById('show-login');
+    const formHeader = document.getElementById('form-header');
+    const signupPrompt = document.getElementById('signup-prompt');
+    const googleSigninBtn = document.getElementById('google-signin-btn');
+    const googleSignupBtn = document.getElementById('google-signup-btn');
+    
+    console.log('Setting up auth handlers...');
+    
+    // Set up Google Auth Provider
+    const googleProvider = new firebase.auth.GoogleAuthProvider();
+    googleProvider.addScope('email');
+    googleProvider.addScope('profile');
+    
+    // Google Sign-In Handler
+    function handleGoogleSignIn() {
+        // Show loading state
+        document.getElementById('google-btn-text').style.display = 'none';
+        document.getElementById('google-loading').style.display = 'inline';
+        hideMessages();
+        
+        auth.signInWithPopup(googleProvider)
+            .then(async (result) => {
+                console.log('Google sign-in successful:', result.user.email);
+                showSuccess('Google sign-in successful! Redirecting...');
+                await handleAuthSuccess(result.user);
+            })
+            .catch((error) => {
+                console.error('Google sign-in error:', error);
+                showError('Google sign-in failed: ' + error.message);
+                resetGoogleButtonState();
+            });
+    }
+    
+    // Google button click handlers
+    googleSigninBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        console.log('Google sign-in button clicked');
+        handleGoogleSignIn();
+    });
+    
+    googleSignupBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        console.log('Google sign-up button clicked');
+        handleGoogleSignIn(); // Same flow for sign-up
+    });
+    
+    // Toggle between login and signup forms
+    showSignup.addEventListener('click', function(e) {
+        e.preventDefault();
+        console.log('Showing signup form');
+        loginForm.style.display = 'none';
+        signupForm.style.display = 'block';
+        signupPrompt.style.display = 'none'; // Hide "Don't have an account?" text
+        formHeader.textContent = 'Sign Up for Dinger Tuesday'; // Change header
+        hideMessages();
+        resetAllButtonStates();
+    });
+    
+    showLogin.addEventListener('click', function(e) {
+        e.preventDefault();
+        console.log('Showing login form');
+        loginForm.style.display = 'block';
+        signupForm.style.display = 'none';
+        signupPrompt.style.display = 'block'; // Show "Don't have an account?" text
+        formHeader.textContent = 'Sign In to Dinger Tuesday'; // Change header back
+        hideMessages();
+        resetAllButtonStates();
+    });
+    
+    // Handle login form submission
+    loginForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        console.log('Login form submitted');
+        
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        
+        if (!email || !password) {
+            showError('Please enter both email and password');
+            return;
+        }
+        
+        // Show loading state
+        document.getElementById('login-text').style.display = 'none';
+        document.getElementById('login-loading').style.display = 'inline';
+        hideMessages();
+        
+        try {
+            console.log('Attempting Firebase login...');
+            const userCredential = await auth.signInWithEmailAndPassword(email, password);
+            const user = userCredential.user;
+            console.log('Firebase login successful:', user.email);
+            
+            showSuccess('Login successful! Redirecting...');
+            await handleAuthSuccess(user);
+        } catch (error) {
+            console.error('Login error:', error);
+            showError(error.message);
+            resetButtonState('login');
+        }
+    });
+    
+    // Handle signup form submission
+    signupForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        console.log('Signup form submitted');
+        
+        const email = document.getElementById('signup-email').value;
+        const password = document.getElementById('signup-password').value;
+        const confirmPassword = document.getElementById('signup-password-confirm').value;
+        
+        hideMessages();
+        
+        // Validation
+        if (!email || !password || !confirmPassword) {
+            showError('Please fill in all fields');
+            return;
+        }
+        
+        if (password !== confirmPassword) {
+            showError('Passwords do not match');
+            return;
+        }
+        
+        if (password.length < 6) {
+            showError('Password must be at least 6 characters long');
+            return;
+        }
+        
+        // Show loading state
+        console.log('Starting signup process...');
+        document.getElementById('signup-text').style.display = 'none';
+        document.getElementById('signup-loading').style.display = 'inline';
+        
+        try {
+            console.log('Attempting Firebase signup...');
+            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+            const user = userCredential.user;
+            console.log('Firebase signup successful:', user.email);
+            
+            showSuccess('Account created successfully! Redirecting...');
+            await handleAuthSuccess(user);
+        } catch (error) {
+            console.error('Signup error:', error);
+            showError(error.message);
+            resetButtonState('signup');
+        }
+    });
+    
+    function resetGoogleButtonState() {
+        document.getElementById('google-btn-text').style.display = 'inline';
+        document.getElementById('google-loading').style.display = 'none';
+    }
+    
+    function resetAllButtonStates() {
+        resetButtonState('login');
+        resetButtonState('signup');
+        resetGoogleButtonState();
+    }
+}
+
+// Handle successful authentication and redirect
+async function handleAuthSuccess(user) {
+    try {
+        console.log('Handling auth success for user:', user.email);
+        const idToken = await user.getIdToken();
+        console.log('Got ID token, verifying with server...');
+        const isValidOnServer = await verifyTokenWithServer(idToken);
+        
+        if (isValidOnServer) {
+            console.log('Server validation successful, redirecting...');
+            const returnUrl = new URLSearchParams(window.location.search).get('return_url') || '/';
+            window.location.href = returnUrl;
+        } else {
+            console.error('Server validation failed');
+            showError('Authentication failed. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error during auth success handling:', error);
+        showError('Authentication error: ' + error.message);
+    }
+}
+
+// Verify token with server
+async function verifyTokenWithServer(idToken) {
+    try {
+        console.log('Verifying token with server...');
+        const response = await fetch('/api/auth/verify', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ idToken: idToken })
+        });
+        
+        console.log('Server verification response:', response.status, response.ok);
+        return response.ok;
+    } catch (error) {
+        console.error('Error verifying token with server:', error);
+        return false;
+    }
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('auth-error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    document.getElementById('auth-success').style.display = 'none';
+}
+
+function showSuccess(message) {
+    const successDiv = document.getElementById('auth-success');
+    successDiv.textContent = message;
+    successDiv.style.display = 'block';
+    document.getElementById('auth-error').style.display = 'none';
+}
+
+function hideMessages() {
+    document.getElementById('auth-error').style.display = 'none';
+    document.getElementById('auth-success').style.display = 'none';
+}
+
+function resetButtonState(type) {
+    if (type === 'login') {
+        document.getElementById('login-text').style.display = 'inline';
+        document.getElementById('login-loading').style.display = 'none';
+    } else if (type === 'signup') {
+        document.getElementById('signup-text').style.display = 'inline';
+        document.getElementById('signup-loading').style.display = 'none';
+    }
+}
+</script>
+{% endblock %} 

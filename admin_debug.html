@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Debug - Authentication State</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Admin Authentication Debug</h1>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">Authentication Status</div>
+                    <div class="card-body">
+                        <div id="auth-status">Testing...</div>
+                        <button onclick="testAuth()" class="btn btn-sm btn-primary mt-2">Test Now</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">Server Authentication State</div>
+                    <div class="card-body">
+                        <div id="server-status">Testing...</div>
+                        <div id="user-role">Role: Unknown</div>
+                        <div id="is-admin">Is Admin: Unknown</div>
+                        <button onclick="testServerAuth()" class="btn btn-sm btn-primary mt-2">Test Server</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">Test Admin Buttons</div>
+            <div class="card-body">
+                <a href="/admin/articles/new" class="btn btn-success admin-edit-btn mr-2" style="display: none;">
+                    <i class="fas fa-plus"></i> Write New Article
+                </a>
+                <a href="/admin/articles/1/edit" class="btn btn-outline-secondary admin-edit-btn mr-2" style="display: none;">
+                    <i class="fas fa-edit"></i> Edit Article
+                </a>
+                <button class="btn btn-outline-danger admin-edit-btn" style="display: none;">
+                    <i class="fas fa-trash"></i> Delete Article
+                </button>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">Debug Actions</div>
+            <div class="card-body">
+                <button onclick="testUserInfo()" class="btn btn-info mr-2">Test /api/auth/user-info</button>
+                <button onclick="testDebugAuth()" class="btn btn-info mr-2">Test /debug/auth</button>
+                <button onclick="manualButtonUpdate()" class="btn btn-warning mr-2">Show Admin Buttons</button>
+                <button onclick="hideButtons()" class="btn btn-secondary mr-2">Hide Admin Buttons</button>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">Debug Console</div>
+            <div class="card-body">
+                <div id="debug-console" style="background: #f8f9fa; padding: 10px; font-family: monospace; max-height: 400px; overflow-y: auto; min-height: 200px;">
+                    <!-- Debug messages will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let debugConsole = null;
+        
+        function log(message) {
+            console.log(message);
+            if (!debugConsole) {
+                debugConsole = document.getElementById('debug-console');
+            }
+            const timestamp = new Date().toLocaleTimeString();
+            debugConsole.innerHTML += `[${timestamp}] ${message}\n`;
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+        }
+        
+        async function testAuth() {
+            log('Testing authentication status...');
+            
+            // Check if user appears to be logged in by testing a protected endpoint
+            try {
+                const response = await fetch('/admin', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    document.getElementById('auth-status').innerHTML = '✅ Authenticated (can access /admin)';
+                    log('✅ User can access /admin - authenticated');
+                } else if (response.status === 302 || response.status === 401) {
+                    document.getElementById('auth-status').innerHTML = '❌ Not authenticated (redirected from /admin)';
+                    log('❌ User redirected from /admin - not authenticated');
+                } else if (response.status === 403) {
+                    document.getElementById('auth-status').innerHTML = '⚠️ Authenticated but not admin';
+                    log('⚠️ User authenticated but not admin (403 from /admin)');
+                } else {
+                    document.getElementById('auth-status').innerHTML = `❓ Unknown status (${response.status})`;
+                    log(`❓ Unknown response from /admin: ${response.status}`);
+                }
+            } catch (error) {
+                document.getElementById('auth-status').innerHTML = '❌ Error testing auth';
+                log(`❌ Error testing auth: ${error.message}`);
+            }
+        }
+        
+        async function testServerAuth() {
+            log('Testing server authentication...');
+            
+            try {
+                const response = await fetch('/api/auth/user-info', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('server-status').innerHTML = '✅ Authenticated with server';
+                    document.getElementById('user-role').innerHTML = `Role: ${data.role}`;
+                    document.getElementById('is-admin').innerHTML = `Is Admin: ${data.isAdmin ? '✅ YES' : '❌ NO'}`;
+                    log(`✅ Server user info: ${JSON.stringify(data)}`);
+                    
+                    // Auto-update buttons based on admin status
+                    if (data.isAdmin) {
+                        showAdminButtons();
+                    }
+                } else {
+                    const errorText = await response.text();
+                    document.getElementById('server-status').innerHTML = `❌ Server error (${response.status})`;
+                    document.getElementById('user-role').innerHTML = 'Role: Unknown';
+                    document.getElementById('is-admin').innerHTML = 'Is Admin: Unknown';
+                    log(`❌ Server authentication failed: ${response.status}`);
+                    log(`Response: ${errorText}`);
+                }
+            } catch (error) {
+                document.getElementById('server-status').innerHTML = '❌ Network error';
+                document.getElementById('user-role').innerHTML = 'Role: Error';
+                document.getElementById('is-admin').innerHTML = 'Is Admin: Error';
+                log(`❌ Network error: ${error.message}`);
+            }
+        }
+        
+        async function testUserInfo() {
+            log('Testing /api/auth/user-info endpoint...');
+            try {
+                const response = await fetch('/api/auth/user-info', {
+                    credentials: 'include'
+                });
+                const text = await response.text();
+                log(`Response status: ${response.status}`);
+                log(`Response headers: ${JSON.stringify([...response.headers.entries()])}`);
+                log(`Response body: ${text}`);
+            } catch (error) {
+                log(`Error: ${error.message}`);
+            }
+        }
+        
+        async function testDebugAuth() {
+            log('Testing /debug/auth endpoint...');
+            try {
+                const response = await fetch('/debug/auth', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                log(`Debug auth response: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`Error: ${error.message}`);
+            }
+        }
+        
+        function showAdminButtons() {
+            log('Showing admin buttons...');
+            const adminButtons = document.querySelectorAll('.admin-edit-btn');
+            adminButtons.forEach(btn => btn.style.display = 'inline-block');
+            log(`Showed ${adminButtons.length} admin buttons`);
+        }
+        
+        function manualButtonUpdate() {
+            showAdminButtons();
+        }
+        
+        function hideButtons() {
+            log('Hiding admin buttons...');
+            const adminButtons = document.querySelectorAll('.admin-edit-btn');
+            adminButtons.forEach(btn => btn.style.display = 'none');
+            log(`Hid ${adminButtons.length} admin buttons`);
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            log('Admin Debug page loaded');
+            
+            // Auto-test authentication
+            setTimeout(() => {
+                testAuth();
+                testServerAuth();
+            }, 1000);
+        });
+    </script>
+</body>
+</html> 

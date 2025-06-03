@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>{% block title %}Dinger Tuesday{% endblock %}</title>
+    <!-- Preload critical CSS -->
+    <link rel="preload" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"></noscript>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        nav { background-color: #333; padding: 10px 0; margin-bottom: 20px; }
+        nav a { color: white; margin: 0 15px; text-decoration: none; font-weight: bold; }
+        nav a:hover { color: #ddd; }
+        .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #555; }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #e9ecef; cursor: pointer; }
+        th:hover { background-color: #d0d4d9; }
+        th.asc::after { content: " ▲"; }
+        th.desc::after { content: " ▼"; }
+        .error { color: red; font-weight: bold; }
+        .no-data { font-style: italic; color: #777; }
+        .loader { display: none; text-align: center; padding: 20px; }
+        .auth-info { color: white; margin-right: 15px; }
+        .btn-auth { margin-left: 10px; }
+        
+        /* Enhanced navigation styling */
+        .navbar-nav .auth-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .user-display {
+            color: #f8f9fa;
+            font-weight: 500;
+            margin: 0;
+            padding: 0;
+            white-space: nowrap;
+        }
+        
+        .nav-link.account-link {
+            color: #f8f9fa !important;
+            font-weight: 500;
+            padding: 8px 16px !important;
+            border-radius: 4px;
+            transition: background-color 0.3s ease;
+        }
+        
+        .nav-link.account-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #fff !important;
+        }
+        
+        .btn-logout {
+            background-color: transparent;
+            border: 1px solid #f8f9fa;
+            color: #f8f9fa;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-logout:hover {
+            background-color: #f8f9fa;
+            color: #343a40;
+        }
+        
+        @media (max-width: 991px) {
+            .navbar-nav .auth-section {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+                margin-top: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <a class="navbar-brand" href="{{ url_for('index') }}">Dinger Tuesday</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav mr-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('pitchers_page') }}">Pitcher Stats</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('hitters_page') }}">Hitter Stats</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('blog_page') }}">Articles</a>
+                </li>
+                <li class="nav-item admin-nav-link" style="display: none;">
+                    <a class="nav-link" href="{{ url_for('admin_page') }}">Admin</a>
+                </li>
+            </ul>
+            <div class="navbar-nav ml-auto">
+                <div class="auth-section">
+                    <span id="user-info" class="user-display" style="display: none;"></span>
+                    <a id="login-btn" class="nav-link" href="{{ url_for('login_page') }}">Login</a>
+                    <a id="account-btn" class="nav-link account-link" href="{{ url_for('profile_page') }}" style="display: none;">My Account</a>
+                    <button id="logout-btn" class="btn btn-logout" style="display: none;" onclick="handleLogout()">Logout</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <div class="container mt-4">
+        <div id="loading" class="loader">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+            <p class="mt-2">Loading data...</p>
+        </div>
+        <div id="content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <!-- Load jQuery first -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <!-- Then Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
+    <!-- Then Bootstrap -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    
+    <!-- Firebase CDN for auth state detection -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    
+    <script>
+        // Hide loading spinner by default
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+        
+        // Firebase configuration for auth state detection
+        const firebaseConfig = {
+            apiKey: "AIzaSyDmw8XHzlBo2lB8X1rzyjQbgd5aRkRilv0",
+            authDomain: "dingertuesday-18a26.firebaseapp.com",
+            projectId: "dingertuesday-18a26",
+            storageBucket: "dingertuesday-18a26.firebasestorage.app",
+            messagingSenderId: "649904034928",
+            appId: "1:649904034928:web:03010b19c057bf4bcc10b5",
+            measurementId: "G-H0ZR5N8SS8"
+        };
+
+        // Initialize Firebase and check auth state
+        try {
+            firebase.initializeApp(firebaseConfig);
+            const auth = firebase.auth();
+            
+            // Listen for auth state changes
+            auth.onAuthStateChanged(function(user) {
+                updateNavigation(user);
+            });
+        } catch (error) {
+            console.log('Firebase not available, showing default navigation');
+        }
+        
+        function updateNavigation(user) {
+            const loginBtn = document.getElementById('login-btn');
+            const accountBtn = document.getElementById('account-btn');
+            const logoutBtn = document.getElementById('logout-btn');
+            const userInfo = document.getElementById('user-info');
+            
+            if (user) {
+                // User is signed in
+                loginBtn.style.display = 'none';
+                accountBtn.style.display = 'block';
+                logoutBtn.style.display = 'block';
+                
+                // Show user email or display name (shortened for better display)
+                let displayText = user.displayName || user.email || 'User';
+                
+                // If it's an email, show just the part before @ for cleaner look
+                if (displayText.includes('@') && !user.displayName) {
+                    displayText = displayText.split('@')[0];
+                }
+                
+                // Capitalize first letter if it's from email
+                if (!user.displayName) {
+                    displayText = displayText.charAt(0).toUpperCase() + displayText.slice(1);
+                }
+                
+                userInfo.textContent = displayText;
+                userInfo.style.display = 'block';
+            } else {
+                // User is signed out
+                loginBtn.style.display = 'block';
+                accountBtn.style.display = 'none';
+                logoutBtn.style.display = 'none';
+                userInfo.style.display = 'none';
+            }
+        }
+        
+        // Enhanced logout function
+        window.handleLogout = function() {
+            try {
+                firebase.auth().signOut().then(() => {
+                    console.log('User signed out successfully');
+                    // Clear any session data
+                    fetch('/api/auth/logout', { method: 'POST' })
+                        .then(() => {
+                            window.location.href = '/';
+                        })
+                        .catch(error => {
+                            console.log('Server logout error:', error);
+                            window.location.href = '/';
+                        });
+                }).catch((error) => {
+                    console.error('Logout error:', error);
+                    window.location.href = '/';
+                });
+            } catch (error) {
+                console.log('Firebase not available, redirecting to home');
+                window.location.href = '/';
+            }
+        };
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get all tables
+            const tables = document.querySelectorAll('table');
+            
+            tables.forEach(function(table) {
+                const headers = table.querySelectorAll('th');
+                
+                // Add click event to each header
+                headers.forEach(function(header, index) {
+                    header.addEventListener('click', function() {
+                        sortTable(table, index, header);
+                    });
+                });
+            });
+            
+            function sortTable(table, columnIndex, header) {
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                
+                // Get current sort direction
+                const isAscending = !header.classList.contains('asc');
+                
+                // Clear all headers classes
+                table.querySelectorAll('th').forEach(th => {
+                    th.classList.remove('asc', 'desc');
+                });
+                
+                // Set new sort direction
+                header.classList.add(isAscending ? 'asc' : 'desc');
+                
+                // Sort rows
+                rows.sort((a, b) => {
+                    let aValue = a.cells[columnIndex].textContent.trim();
+                    let bValue = b.cells[columnIndex].textContent.trim();
+                    
+                    // Try to convert to numbers if possible
+                    const aNum = parseFloat(aValue);
+                    const bNum = parseFloat(bValue);
+                    
+                    if (!isNaN(aNum) && !isNaN(bNum)) {
+                        return isAscending ? aNum - bNum : bNum - aNum;
+                    }
+                    
+                    // String comparison
+                    return isAscending ? 
+                        aValue.localeCompare(bValue) : 
+                        bValue.localeCompare(aValue);
+                });
+                
+                // Remove existing rows
+                while (tbody.firstChild) {
+                    tbody.removeChild(tbody.firstChild);
+                }
+                
+                // Append sorted rows
+                rows.forEach(row => tbody.appendChild(row));
+            }
+        });
+    </script>
+</body>
+</html> 

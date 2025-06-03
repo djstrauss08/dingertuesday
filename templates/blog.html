@@ -1,0 +1,180 @@
+{% extends "layout.html" %}
+
+{% block title %}Articles - MLB HR Handicapper{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="mb-2">Latest Articles</h1>
+            <p class="lead">Insights, analysis, and strategies for MLB home run handicapping</p>
+        </div>
+        <div>
+            <a href="/admin/articles/new" class="btn btn-success admin-edit-btn" style="display: none;">
+                <i class="fas fa-plus"></i> Write New Article
+            </a>
+        </div>
+    </div>
+
+    {% if articles %}
+        {% for article in articles %}
+        <article class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">{{ article.title }}</h2>
+                <div class="text-muted mb-3">
+                    <small>Published on {{ article.created_at[:10] }} | By {{ article.author }}</small>
+                </div>
+                <p class="card-text">
+                    {{ article.summary or article.content[:300] + '...' }}
+                </p>
+                {% if article.tags %}
+                <div class="mb-3">
+                    {% for tag in article.tags %}
+                        {% if tag.strip() %}
+                        <span class="badge badge-primary">{{ tag.strip() }}</span>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <div class="d-flex justify-content-between align-items-center">
+                    <a href="/blog/{{ article.slug }}" class="btn btn-primary">Read More</a>
+                    <div>
+                        <a href="/admin/articles/{{ article.id }}/edit" class="btn btn-outline-secondary btn-sm admin-edit-btn" style="display: none;">
+                            <i class="fas fa-edit"></i> Edit
+                        </a>
+                        <button class="btn btn-outline-danger btn-sm ml-2 admin-edit-btn" style="display: none;" onclick="deleteArticle({{ article.id }})">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+
+        <!-- Pagination -->
+        <nav aria-label="Articles pagination" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if current_page > 1 %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ current_page - 1 }}">Previous</a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">Previous</span>
+                </li>
+                {% endif %}
+
+                <li class="page-item active">
+                    <span class="page-link">{{ current_page }}</span>
+                </li>
+
+                {% if has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ current_page + 1 }}">Next</a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">Next</span>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% else %}
+        <!-- No articles message -->
+        <div class="text-center py-5">
+            <h3 class="text-muted">No articles published yet</h3>
+            <p class="text-muted mb-4">Start sharing your MLB handicapping insights!</p>
+            <a href="/admin/articles/new" class="btn btn-primary btn-lg admin-edit-btn" style="display: none;">
+                <i class="fas fa-pen"></i> Write Your First Article
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function deleteArticle(articleId) {
+    if (confirm('Are you sure you want to delete this article? This action cannot be undone.')) {
+        const button = event.target.closest('button');
+        const originalText = button.innerHTML;
+        
+        // Show loading state
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+        
+        fetch('/api/articles/' + articleId, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Article deleted successfully!');
+                // Remove the article card from the page
+                button.closest('.card').remove();
+            } else {
+                alert('Error deleting article: ' + (data.error || 'Unknown error'));
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting article');
+            button.disabled = false;
+            button.innerHTML = originalText;
+        });
+    }
+}
+</script>
+
+<!-- Include auth management for admin button visibility -->
+<script type="module">
+    import authManager from '/static/js/auth.js';
+    
+    // Wait for auth state and update admin buttons
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initial update
+        setTimeout(() => {
+            authManager.updateAdminNavigation();
+        }, 1000);
+        
+        // Listen for auth changes
+        authManager.onAuthStateChange((user) => {
+            setTimeout(() => {
+                authManager.updateAdminNavigation();
+            }, 500);
+        });
+    });
+</script>
+
+<style>
+    .card {
+        border: 1px solid #dee2e6;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        transition: box-shadow 0.3s ease;
+    }
+    
+    .card-title {
+        color: #2c3e50;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .badge {
+        margin-right: 5px;
+        font-size: 0.8em;
+    }
+    
+    .pagination .page-link {
+        color: #007bff;
+    }
+    
+    .pagination .page-item.active .page-link {
+        background-color: #007bff;
+        border-color: #007bff;
+    }
+</style>
+{% endblock %} 

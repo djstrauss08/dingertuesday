@@ -1,0 +1,111 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ article.title }} - MLB HR Handicapper{% endblock %}
+
+{% block content %}
+<div class="container">
+    <article>
+        <div class="mb-4">
+            <a href="/blog" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Articles
+            </a>
+        </div>
+
+        <header class="mb-4">
+            <h1 class="display-4">{{ article.title }}</h1>
+            <div class="text-muted mb-3">
+                <small>
+                    Published on {{ article.created_at[:10] }} by {{ article.author }}
+                    {% if article.updated_at != article.created_at %}
+                    | Updated on {{ article.updated_at[:10] }}
+                    {% endif %}
+                </small>
+            </div>
+            
+            {% if article.tags %}
+            <div class="mb-3">
+                {% for tag in article.tags %}
+                    {% if tag.strip() %}
+                    <span class="badge badge-primary">{{ tag.strip() }}</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </header>
+
+        <div class="article-content">
+            {{ article.content|replace('\n', '<br>')|safe }}
+        </div>
+
+        <footer class="mt-5 pt-4 border-top">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="text-muted">
+                        <strong>About the author:</strong><br>
+                        {{ article.author }} specializes in MLB analytics and home run handicapping strategies.
+                    </p>
+                </div>
+                <div class="col-md-6 text-right">
+                    <a href="/admin/articles/{{ article.id }}/edit" class="btn btn-outline-primary admin-edit-btn" style="display: none;">
+                        <i class="fas fa-edit"></i> Edit Article
+                    </a>
+                </div>
+            </div>
+        </footer>
+    </article>
+</div>
+
+<style>
+    .article-content {
+        font-size: 1.1em;
+        line-height: 1.7;
+        color: #333;
+    }
+    
+    .article-content h1,
+    .article-content h2,
+    .article-content h3 {
+        margin-top: 2em;
+        margin-bottom: 1em;
+        color: #2c3e50;
+    }
+    
+    .article-content p {
+        margin-bottom: 1.5em;
+    }
+    
+    .article-content ul,
+    .article-content ol {
+        margin-bottom: 1.5em;
+        padding-left: 2em;
+    }
+    
+    .article-content blockquote {
+        border-left: 4px solid #007bff;
+        padding-left: 1em;
+        margin: 1.5em 0;
+        font-style: italic;
+        color: #6c757d;
+    }
+</style>
+
+<!-- Include auth management for admin button visibility -->
+<script type="module">
+    import authManager from '/static/js/auth.js';
+    
+    // Wait for auth state and update admin buttons
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initial update
+        setTimeout(() => {
+            authManager.updateAdminNavigation();
+        }, 1000);
+        
+        // Listen for auth changes
+        authManager.onAuthStateChange((user) => {
+            setTimeout(() => {
+                authManager.updateAdminNavigation();
+            }, 500);
+        });
+    });
+</script>
+{% endblock %} 

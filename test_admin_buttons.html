@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Button Test</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Admin Button Visibility Test</h1>
+        
+        <div class="alert alert-info">
+            <strong>Instructions:</strong>
+            <ul>
+                <li>When NOT logged in as admin: All buttons below should be HIDDEN</li>
+                <li>When logged in as admin: All buttons below should be VISIBLE</li>
+            </ul>
+        </div>
+        
+        <!-- Test Admin Navigation Link -->
+        <div class="card mb-3">
+            <div class="card-header">Admin Navigation Link</div>
+            <div class="card-body">
+                <nav class="navbar navbar-light bg-light">
+                    <a class="navbar-brand" href="#">Dinger Tuesday</a>
+                    <div class="navbar-nav">
+                        <a class="nav-link admin-nav-link" href="/admin" style="display: none;">Admin Dashboard</a>
+                    </div>
+                </nav>
+            </div>
+        </div>
+        
+        <!-- Test Admin Edit Buttons -->
+        <div class="card mb-3">
+            <div class="card-header">Admin Edit Buttons</div>
+            <div class="card-body">
+                <a href="/admin/articles/new" class="btn btn-success admin-edit-btn mr-2" style="display: none;">
+                    <i class="fas fa-plus"></i> Write New Article
+                </a>
+                <a href="/admin/articles/1/edit" class="btn btn-outline-secondary admin-edit-btn mr-2" style="display: none;">
+                    <i class="fas fa-edit"></i> Edit Article
+                </a>
+                <button class="btn btn-outline-danger admin-edit-btn" style="display: none;">
+                    <i class="fas fa-trash"></i> Delete Article
+                </button>
+            </div>
+        </div>
+        
+        <!-- Test Current Auth State -->
+        <div class="card mb-3">
+            <div class="card-header">Current Authentication State</div>
+            <div class="card-body">
+                <div id="auth-status">Loading...</div>
+                <div id="user-role">Role: Loading...</div>
+                <div id="is-admin">Is Admin: Loading...</div>
+            </div>
+        </div>
+        
+        <!-- Manual Refresh Button -->
+        <button onclick="refreshAdminButtons()" class="btn btn-primary">
+            Refresh Admin Button Visibility
+        </button>
+    </div>
+    
+    <!-- Firebase Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    
+    <script type="module">
+        import authManager from '/static/js/auth.js';
+        
+        function updateAuthStatus() {
+            const authStatus = document.getElementById('auth-status');
+            const userRole = document.getElementById('user-role');
+            const isAdmin = document.getElementById('is-admin');
+            
+            if (authManager.isAuthenticated()) {
+                authStatus.innerHTML = `✅ Authenticated as: ${authManager.getCurrentUser().email}`;
+                userRole.innerHTML = `Role: ${authManager.getUserRole()}`;
+                isAdmin.innerHTML = `Is Admin: ${authManager.isAdmin() ? '✅ YES' : '❌ NO'}`;
+            } else {
+                authStatus.innerHTML = '❌ Not authenticated';
+                userRole.innerHTML = 'Role: N/A';
+                isAdmin.innerHTML = 'Is Admin: N/A';
+            }
+            
+            // Count visible admin elements
+            const adminLinks = document.querySelectorAll('.admin-nav-link');
+            const editButtons = document.querySelectorAll('.admin-edit-btn');
+            const visibleLinks = Array.from(adminLinks).filter(link => link.style.display !== 'none').length;
+            const visibleButtons = Array.from(editButtons).filter(btn => btn.style.display !== 'none').length;
+            
+            console.log(`Admin elements visible: ${visibleLinks} links, ${visibleButtons} buttons`);
+        }
+        
+        // Update status when auth changes
+        authManager.onAuthStateChange(() => {
+            setTimeout(updateAuthStatus, 1000);
+        });
+        
+        // Initial update
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(updateAuthStatus, 2000);
+        });
+        
+        // Make refresh function available globally
+        window.refreshAdminButtons = function() {
+            authManager.updateAdminNavigation();
+            setTimeout(updateAuthStatus, 500);
+        };
+    </script>
+</body>
+</html> 

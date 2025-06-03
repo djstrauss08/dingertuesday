@@ -1,0 +1,226 @@
+{% extends "layout.html" %}
+{% block title %}Home - Dinger Tuesday{% endblock %}
+
+{% block content %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
+    
+    .hero-section {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 25%, #059669 75%, #0d9488 100%);
+        min-height: 70vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        border-radius: 20px;
+        margin-bottom: 3rem;
+    }
+    
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: 
+            radial-gradient(circle at 20% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 80%, rgba(255,255,255,0.05) 0%, transparent 50%),
+            radial-gradient(circle at 40% 60%, rgba(6,182,212,0.1) 0%, transparent 50%);
+    }
+    
+    .hero-content {
+        text-align: center;
+        z-index: 10;
+        position: relative;
+        max-width: 900px;
+        padding: 3rem 2rem;
+    }
+    
+    .main-title {
+        font-family: 'Inter', sans-serif;
+        font-size: clamp(2.5rem, 8vw, 5rem);
+        font-weight: 900;
+        color: white;
+        margin-bottom: 1.5rem;
+        text-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+    }
+    
+    .subtitle {
+        font-family: 'Inter', sans-serif;
+        font-size: 1.5rem;
+        font-weight: 400;
+        color: rgba(255,255,255,0.9);
+        margin-bottom: 2rem;
+        text-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    
+    .divider {
+        width: 100px;
+        height: 3px;
+        background: linear-gradient(90deg, #06b6d4, #10b981);
+        margin: 2rem auto;
+        border-radius: 2px;
+        box-shadow: 0 5px 15px rgba(6,182,212,0.3);
+    }
+    
+    .cta-text {
+        font-family: 'Inter', sans-serif;
+        font-size: 1.2rem;
+        font-weight: 300;
+        color: rgba(255,255,255,0.8);
+        margin-bottom: 3rem;
+    }
+    
+    .button-container {
+        display: flex;
+        gap: 1.5rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .modern-btn {
+        font-family: 'Inter', sans-serif;
+        padding: 1rem 2rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 12px;
+        text-decoration: none;
+        color: white;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        min-width: 200px;
+    }
+    
+    .modern-btn::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        transition: left 0.5s;
+    }
+    
+    .modern-btn:hover::before {
+        left: 100%;
+    }
+    
+    .modern-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+        color: white;
+        text-decoration: none;
+    }
+    
+    .btn-primary-modern {
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        border: 1px solid rgba(59,130,246,0.3);
+    }
+    
+    .btn-secondary-modern {
+        background: linear-gradient(135deg, #6b7280, #374151);
+        border: 1px solid rgba(107,114,128,0.3);
+    }
+    
+    .btn-success-modern {
+        background: linear-gradient(135deg, #10b981, #059669);
+        border: 1px solid rgba(16,185,129,0.3);
+    }
+    
+    .floating-elements {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+    }
+    
+    .floating-ball {
+        position: absolute;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.1);
+        backdrop-filter: blur(10px);
+        animation: float 6s ease-in-out infinite;
+    }
+    
+    .ball-1 { top: 10%; left: 5%; animation-delay: 0s; }
+    .ball-2 { top: 20%; right: 8%; animation-delay: 2s; }
+    .ball-3 { bottom: 15%; left: 8%; animation-delay: 4s; }
+    .ball-4 { bottom: 25%; right: 5%; animation-delay: 1s; }
+    
+    @keyframes float {
+        0%, 100% { transform: translateY(0px) rotate(0deg); }
+        50% { transform: translateY(-20px) rotate(180deg); }
+    }
+    
+    .about-section {
+        background: white;
+        border-radius: 16px;
+        padding: 2.5rem;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.05);
+        border: 1px solid rgba(0,0,0,0.05);
+    }
+    
+    .about-title {
+        font-family: 'Inter', sans-serif;
+        font-size: 2rem;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+</style>
+
+<div class="hero-section">
+    <div class="floating-elements">
+        <div class="floating-ball ball-1"></div>
+        <div class="floating-ball ball-2"></div>
+        <div class="floating-ball ball-3"></div>
+        <div class="floating-ball ball-4"></div>
+    </div>
+    
+    <div class="hero-content">
+        <h1 class="main-title">Welcome to dingertuesday.com</h1>
+        <p class="subtitle">Your go-to source for crushing home run prop betting.</p>
+        <div class="divider"></div>
+        <p class="cta-text">Jump to one of the sections below to get started</p>
+        
+        <div class="button-container">
+            <a class="modern-btn btn-primary-modern" href="{{ url_for('pitchers_page') }}">
+                🥎 View Pitcher Stats
+            </a>
+            <a class="modern-btn btn-secondary-modern" href="{{ url_for('hitters_page') }}">
+                🏏 View Hitter Stats
+            </a>
+            <a class="modern-btn btn-success-modern" href="{{ url_for('blog_page') }}">
+                📊 Read Latest Analysis
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="about-section">
+    <h2 class="about-title">⚾ About This Tool ⚾</h2>
+    <p>This tool provides key statistics to help you analyze MLB matchups for home run prop betting. Data is sourced from the MLB Stats API.</p>
+    <p><strong>Features:</strong></p>
+    <ul>
+        <li><strong>Pitcher Stats:</strong> View today's starting pitchers, their performance metrics (Batters Faced, HR Allowed) for the {{ season }} season, and their opponents.</li>
+        <li><strong>Hitter Stats:</strong> Discover the top 50 hitters by home runs in the {{ season }} season, along with their At-Bats and opponent for today's games.</li>
+        <li><strong>Matchup Details:</strong> Click on an opposing team from the Pitcher Stats page to see the top 10 HR hitters for that team with advanced metrics for the {{ season }} season.</li>
+    </ul>
+
+    <p><small>Note: Data is for the {{ season }} season. If games are not yet scheduled for today or pitcher information is not yet available, some sections may be empty.</small></p>
+</div>
+{% endblock %} 
