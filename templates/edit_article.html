@@ -69,19 +69,19 @@
                                             <div class="block-category">
                                                 <h6>Text</h6>
                                                 <div class="block-grid">
-                                                    <button type="button" class="block-option" onclick="addBlock('paragraph')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('paragraph')">
                                                         <i class="fas fa-paragraph"></i>
                                                         <span>Paragraph</span>
                                                     </button>
-                                                    <button type="button" class="block-option" onclick="addBlock('heading')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('heading')">
                                                         <i class="fas fa-heading"></i>
                                                         <span>Heading</span>
                                                     </button>
-                                                    <button type="button" class="block-option" onclick="addBlock('quote')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('quote')">
                                                         <i class="fas fa-quote-left"></i>
                                                         <span>Quote</span>
                                                     </button>
-                                                    <button type="button" class="block-option" onclick="addBlock('list')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('list')">
                                                         <i class="fas fa-list"></i>
                                                         <span>List</span>
                                                     </button>
@@ -90,15 +90,15 @@
                                             <div class="block-category">
                                                 <h6>Media</h6>
                                                 <div class="block-grid">
-                                                    <button type="button" class="block-option" onclick="addBlock('image')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('image')">
                                                         <i class="fas fa-image"></i>
                                                         <span>Image</span>
                                                     </button>
-                                                    <button type="button" class="block-option" onclick="addBlock('video')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('video')">
                                                         <i class="fas fa-video"></i>
                                                         <span>Video</span>
                                                     </button>
-                                                    <button type="button" class="block-option" onclick="addBlock('embed')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('embed')">
                                                         <i class="fas fa-code"></i>
                                                         <span>Embed</span>
                                                     </button>
@@ -107,11 +107,11 @@
                                             <div class="block-category">
                                                 <h6>Layout</h6>
                                                 <div class="block-grid">
-                                                    <button type="button" class="block-option" onclick="addBlock('separator')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('separator')">
                                                         <i class="fas fa-minus"></i>
                                                         <span>Separator</span>
                                                     </button>
-                                                    <button type="button" class="block-option" onclick="addBlock('spacer')">
+                                                    <button type="button" class="block-option" onclick="event.preventDefault(); addBlock('spacer')">
                                                         <i class="fas fa-arrows-alt-v"></i>
                                                         <span>Spacer</span>
                                                     </button>
@@ -238,6 +238,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up form submission
     if (form) {
         form.addEventListener('submit', handleFormSubmission);
+        
+        // Additional form submission prevention for debugging
+        form.addEventListener('submit', function(e) {
+            console.log('🚨 Form submission triggered!');
+            console.log('Event target:', e.target);
+            console.log('Event submitter:', e.submitter);
+            console.log('Stack trace:', new Error().stack);
+        }, true); // Use capture phase
+        
         console.log('✅ Form submission handler attached');
     } else {
         console.error('❌ Could not attach form submission handler - form not found');
@@ -962,31 +971,53 @@ function showFallbackEditor() {
 
 // Block management functions
 function addBlock(type, content = '', position = -1) {
-    console.log('Adding block:', type);
+    console.log('🟢 Adding block:', type, 'Position:', position);
     
-    const blockId = 'block_' + (++blockEditor.currentBlockId);
-    
-    const block = {
-        id: blockId,
-        type: type,
-        content: content || getDefaultContent(type),
-        settings: getDefaultSettings(type)
-    };
-    
-    if (position === -1) {
-        blockEditor.blocks.push(block);
-    } else {
-        blockEditor.blocks.splice(position, 0, block);
+    try {
+        const blockId = 'block_' + (++blockEditor.currentBlockId);
+        
+        const block = {
+            id: blockId,
+            type: type,
+            content: content || getDefaultContent(type),
+            settings: getDefaultSettings(type)
+        };
+        
+        if (position === -1) {
+            blockEditor.blocks.push(block);
+        } else {
+            blockEditor.blocks.splice(position, 0, block);
+        }
+        
+        console.log('🔄 Hiding block selector...');
+        hideBlockSelector();
+        
+        console.log('🔄 Rendering blocks...');
+        renderBlocks();
+        
+        console.log('🔄 Updating block count...');
+        updateBlockCount();
+        
+        // Focus the new block
+        setTimeout(() => {
+            focusBlock(blockId);
+        }, 100);
+        
+        console.log('✅ Block added successfully:', blockId);
+        
+        // Explicitly prevent any form submission
+        const form = document.getElementById('articleForm');
+        if (form) {
+            console.log('🛡️ Form found, ensuring no accidental submission');
+        }
+        
+        return false; // Prevent any default behavior
+        
+    } catch (error) {
+        console.error('❌ Error in addBlock:', error);
+        console.error('Stack trace:', error.stack);
+        return false;
     }
-    
-    hideBlockSelector();
-    renderBlocks();
-    updateBlockCount();
-    
-    // Focus the new block
-    setTimeout(() => {
-        focusBlock(blockId);
-    }, 100);
 }
 
 function getDefaultContent(type) {
