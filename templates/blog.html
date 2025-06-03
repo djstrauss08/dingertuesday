@@ -25,7 +25,7 @@
                     <small>Published on {{ article.created_at[:10] }} | By {{ article.author }}</small>
                 </div>
                 <p class="card-text">
-                    {{ article.summary or article.content[:300] + '...' }}
+                    {{ article.summary or "No summary available." }}
                 </p>
                 {% if article.tags %}
                 <div class="mb-3">
