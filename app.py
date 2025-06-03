@@ -293,7 +293,7 @@ DAILY_DATA_CACHE = {
 }
 
 # Database setup for persistent daily data storage
-DATABASE_PATH = os.environ.get('DATABASE_PATH', '/tmp/daily_mlb_data.sqlite' if os.environ.get('VERCEL') else 'daily_mlb_data.sqlite')
+DATABASE_PATH = os.environ.get('DATABASE_PATH', 'daily_mlb_data.sqlite')
 
 def init_database():
     """Initialize the database with tables for daily data storage"""
