@@ -19,12 +19,35 @@ from werkzeug.utils import secure_filename
 import requests
 import firebase_admin
 from firebase_admin import credentials, auth
+import pytz
 
 # Set up request caching
 requests_cache.install_cache('mlb_api_cache', backend='sqlite', expire_after=3600)  # Cache for 1 hour
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Eastern Time zone for MLB operations
+EASTERN_TZ = pytz.timezone('US/Eastern')
+
+def get_mlb_today():
+    """
+    Get the current MLB day based on Eastern Time.
+    The MLB day changes at 3 AM ET, so games before 3 AM are considered part of the previous day.
+    """
+    now_et = datetime.now(EASTERN_TZ)
+    
+    # If it's before 3 AM ET, use the previous day
+    if now_et.hour < 3:
+        mlb_date = (now_et - timedelta(days=1)).date()
+    else:
+        mlb_date = now_et.date()
+    
+    return mlb_date.strftime("%Y-%m-%d")
+
+def get_eastern_time():
+    """Get current Eastern Time"""
+    return datetime.now(EASTERN_TZ)
 
 # Initialize Firebase Admin SDK
 # For development, we'll use the project configuration without a service account
@@ -747,10 +770,12 @@ def fetch_daily_hitters_data():
             return {'error': "No home run leaders data available", 'hitters_data': []}
         
         # Use the same date as pitchers_api
-        today_str = date.today().strftime("%Y-%m-%d")
+        today_str = get_mlb_today()
         schedule_today = statsapi.schedule(date=today_str, sportId=1)
         
-        player_opponents = {} # Store opponent for each player playing today
+        # Create mapping of player names to opponents for today's games
+        player_name_to_opponent = {}  # player_name -> opponent_name
+        
         if isinstance(schedule_today, list) and schedule_today:
             for game in schedule_today:
                 if not isinstance(game, dict): 
@@ -760,36 +785,38 @@ def fetch_daily_hitters_data():
                 home_team_name = game.get('home_name', "N/A")
                 away_team_name = game.get('away_name', "N/A")
 
-                # Get rosters to map players to today's games
-                if home_team_id:
+                # Get rosters and map players to opponents
+                if home_team_id and away_team_id:
                     try:
-                        home_roster_data = get_team_roster(home_team_id)
-                        if isinstance(home_roster_data, str):
-                            for player_entry in home_roster_data.split('\n'):
-                                try:
-                                    parts = player_entry.split(" ")
-                                    if parts and parts[0].isdigit():
-                                        player_id = int(parts[0])
-                                        player_opponents[player_id] = away_team_name
-                                except Exception:
-                                    pass
+                        # Get home team roster
+                        home_roster = statsapi.roster(home_team_id, season=CURRENT_SEASON)
+                        if isinstance(home_roster, str):
+                            for line in home_roster.split('\n'):
+                                if line.strip() and '#' in line:
+                                    # Parse format like "#99  RF  Aaron Judge"
+                                    parts = line.strip().split()
+                                    if len(parts) >= 3:
+                                        # Player name is everything after position
+                                        player_name = ' '.join(parts[2:])
+                                        player_name_to_opponent[player_name] = away_team_name
+                        
+                        # Get away team roster  
+                        away_roster = statsapi.roster(away_team_id, season=CURRENT_SEASON)
+                        if isinstance(away_roster, str):
+                            for line in away_roster.split('\n'):
+                                if line.strip() and '#' in line:
+                                    # Parse format like "#99  RF  Aaron Judge"
+                                    parts = line.strip().split()
+                                    if len(parts) >= 3:
+                                        # Player name is everything after position
+                                        player_name = ' '.join(parts[2:])
+                                        player_name_to_opponent[player_name] = home_team_name
+                                        
                     except Exception as e:
-                        logger.error(f"Error fetching home roster: {e}")
-                
-                if away_team_id:
-                    try:
-                        away_roster_data = get_team_roster(away_team_id)
-                        if isinstance(away_roster_data, str):
-                            for player_entry in away_roster_data.split('\n'):
-                                try:
-                                    parts = player_entry.split(" ")
-                                    if parts and parts[0].isdigit():
-                                        player_id = int(parts[0])
-                                        player_opponents[player_id] = home_team_name
-                                except Exception:
-                                    pass
-                    except Exception as e:
-                        logger.error(f"Error fetching away roster: {e}")
+                        logger.error(f"Error fetching rosters for game {home_team_name} vs {away_team_name}: {e}")
+                        continue
+
+        logger.info(f"Found {len(player_name_to_opponent)} players with games today")
 
         # Process each leader
         hitters_data = []
@@ -807,8 +834,8 @@ def fetch_daily_hitters_data():
                 player_stats = get_player_stats(player_id, group="hitting", type="season")
                 at_bats = player_stats.get('atBats', "N/A")
                 
-                # Check if we have a matchup today
-                opponent_today = player_opponents.get(player_id, "N/A")
+                # Check if we have a matchup today by player name
+                opponent_today = player_name_to_opponent.get(player_name, "No game today")
                 
                 hitters_data.append({
                     'name': player_name,
@@ -838,7 +865,7 @@ def daily_data_update():
     logger.info("Starting daily data update...")
     update_start_time = time.time()
     
-    today_str = date.today().strftime("%Y-%m-%d")
+    today_str = get_mlb_today()
     
     try:
         # Fetch pitcher data
@@ -857,7 +884,7 @@ def daily_data_update():
         DAILY_DATA_CACHE['schedule'] = schedule_data
         
         # Update cache metadata
-        DAILY_DATA_CACHE['last_updated'] = datetime.now().isoformat()
+        DAILY_DATA_CACHE['last_updated'] = get_eastern_time().isoformat()
         DAILY_DATA_CACHE['update_date'] = today_str
         
         update_time = time.time() - update_start_time
@@ -872,7 +899,7 @@ def daily_data_update():
 
 def cleanup_old_data():
     """Remove data older than 7 days to keep database size manageable"""
-    cutoff_date = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
+    cutoff_date = (datetime.strptime(get_mlb_today(), "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
     
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
@@ -890,7 +917,7 @@ def cleanup_old_data():
 
 def load_today_data_on_startup():
     """Load today's data from database on application startup"""
-    today_str = date.today().strftime("%Y-%m-%d")
+    today_str = get_mlb_today()
     
     logger.info("Loading today's data from database...")
     
@@ -914,38 +941,38 @@ def load_today_data_on_startup():
     
     if pitcher_data or hitter_data or schedule_data:
         DAILY_DATA_CACHE['update_date'] = today_str
-        DAILY_DATA_CACHE['last_updated'] = datetime.now().isoformat()
+        DAILY_DATA_CACHE['last_updated'] = get_eastern_time().isoformat()
         logger.info("Successfully loaded today's data from database")
     else:
         logger.info("No cached data found for today, will fetch on first request")
 
 def setup_scheduler():
     """Set up the background scheduler for daily updates"""
-    scheduler = BackgroundScheduler()
+    scheduler = BackgroundScheduler(timezone=EASTERN_TZ)
     
-    # Schedule daily update at 3:00 AM
+    # Schedule daily update at 3:00 AM Eastern Time
     scheduler.add_job(
         func=daily_data_update,
-        trigger=CronTrigger(hour=3, minute=0),
+        trigger=CronTrigger(hour=3, minute=0, timezone=EASTERN_TZ),
         id='daily_update',
-        name='Daily MLB Data Update',
+        name='Daily MLB Data Update (3 AM ET)',
         replace_existing=True
     )
     
     # Also run update immediately if no data exists for today
-    today_str = date.today().strftime("%Y-%m-%d")
+    today_str = get_mlb_today()
     if not load_daily_data('pitchers', today_str):
         logger.info("No data for today found, scheduling immediate update...")
         scheduler.add_job(
             func=daily_data_update,
             trigger='date',
-            run_date=datetime.now() + timedelta(seconds=10),
+            run_date=get_eastern_time() + timedelta(seconds=10),
             id='immediate_update',
             name='Immediate MLB Data Update'
         )
     
     scheduler.start()
-    logger.info("Background scheduler started - daily updates at 3:00 AM")
+    logger.info("Background scheduler started - daily updates at 3:00 AM Eastern Time")
     
     # Shut down the scheduler when the app exits
     atexit.register(lambda: scheduler.shutdown())
@@ -1085,7 +1112,7 @@ def get_team_roster(team_id, season=CURRENT_SEASON):
 def get_daily_schedule(date_str=None):
     """Get schedule for a given date with caching"""
     if date_str is None:
-        date_str = date.today().strftime("%Y-%m-%d")
+        date_str = get_mlb_today()
     
     cache_key = f"schedule_{date_str}"
     
@@ -1106,12 +1133,12 @@ def index():
 
 @app.route('/pitchers')
 def pitchers_page():
-    return render_template('pitchers.html', today_date=date.today().strftime("%Y-%m-%d"), season=CURRENT_SEASON)
+    return render_template('pitchers.html', today_date=get_mlb_today(), season=CURRENT_SEASON)
 
 @app.route('/api/pitchers')
 def pitchers_api():
     """Optimized pitchers API using pre-fetched daily data"""
-    today_str = date.today().strftime("%Y-%m-%d")
+    today_str = get_mlb_today()
     
     # First, try to get data from daily cache
     if (DAILY_DATA_CACHE['pitchers'] is not None and 
@@ -1144,7 +1171,7 @@ def pitchers_api():
         # Cache the live data for future requests
         DAILY_DATA_CACHE['pitchers'] = live_data
         DAILY_DATA_CACHE['update_date'] = today_str
-        DAILY_DATA_CACHE['last_updated'] = datetime.now().isoformat()
+        DAILY_DATA_CACHE['last_updated'] = get_eastern_time().isoformat()
         
         # Also save to database
         save_daily_data('pitchers', today_str, live_data)
@@ -1448,7 +1475,7 @@ def upload_image():
 @app.route('/api/hitters')
 def hitters_api():
     """Optimized hitters API using pre-fetched daily data"""
-    today_str = date.today().strftime("%Y-%m-%d")
+    today_str = get_mlb_today()
     
     # First, try to get data from daily cache
     if (DAILY_DATA_CACHE['hitters'] is not None and 
@@ -1481,7 +1508,7 @@ def hitters_api():
         # Cache the live data for future requests
         DAILY_DATA_CACHE['hitters'] = live_data
         DAILY_DATA_CACHE['update_date'] = today_str
-        DAILY_DATA_CACHE['last_updated'] = datetime.now().isoformat()
+        DAILY_DATA_CACHE['last_updated'] = get_eastern_time().isoformat()
         
         # Also save to database
         save_daily_data('hitters', today_str, live_data)
@@ -1706,10 +1733,17 @@ def app_config():
 @app.route('/api/daily_status')
 def daily_status():
     """Get the status of daily data updates"""
-    today_str = date.today().strftime("%Y-%m-%d")
+    today_str = get_mlb_today()
+    current_et = get_eastern_time()
     
     status = {
         'today': today_str,
+        'eastern_time': {
+            'current_time': current_et.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            'timezone': str(current_et.tzinfo),
+            'hour': current_et.hour,
+            'next_changeover': '3:00 AM ET tomorrow' if current_et.hour >= 3 else f'3:00 AM ET today ({3 - current_et.hour} hours)'
+        },
         'daily_cache_status': {
             'pitchers': DAILY_DATA_CACHE['pitchers'] is not None,
             'hitters': DAILY_DATA_CACHE['hitters'] is not None,
@@ -1723,7 +1757,7 @@ def daily_status():
             'schedule': load_daily_data('schedule', today_str) is not None
         },
         'scheduler_running': scheduler.running if 'scheduler' in globals() else False,
-        'next_scheduled_update': '3:00 AM daily'
+        'next_scheduled_update': '3:00 AM Eastern Time daily'
     }
     
     return jsonify(status)
@@ -1741,14 +1775,16 @@ def trigger_update():
         return jsonify({
             'status': 'success',
             'message': 'Daily data update triggered successfully',
-            'timestamp': datetime.now().isoformat()
+            'timestamp': get_eastern_time().isoformat(),
+            'mlb_date': get_mlb_today()
         })
     except Exception as e:
         logger.error(f"Error triggering update: {e}")
         return jsonify({
             'status': 'error',
             'message': f'Error triggering update: {e}',
-            'timestamp': datetime.now().isoformat()
+            'timestamp': get_eastern_time().isoformat(),
+            'mlb_date': get_mlb_today()
         })
 
 @app.route('/api/clear_cache')
