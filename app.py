@@ -21,6 +21,13 @@ import firebase_admin
 from firebase_admin import credentials, auth
 import pytz
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize scheduler variable
+scheduler = None
+
 # Set up request caching
 requests_cache.install_cache('mlb_api_cache', backend='sqlite', expire_after=3600)  # Cache for 1 hour
 
@@ -289,10 +296,6 @@ def require_admin(f):
         return redirect(url_for('login_page', return_url=request.url))
     
     return decorated_function
-
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # Determine the current or most recent season dynamically if possible, otherwise default
 # Using 2025 for current season data
@@ -751,11 +754,78 @@ def fetch_daily_pitchers_data(date_str):
         logger.error(f"Error in fetch_daily_pitchers_data: {e}")
         return {'error': str(e), 'pitchers_data': []}
 
+def fetch_home_run_odds():
+    """Fetch today's home run odds from the external API"""
+    odds_url = "https://djstrauss08.github.io/HomeRunOdds//api/v1/homerun-props.json"
+    
+    # Initialize the player_odds dictionary
+    player_odds = {}
+    
+    try:
+        logger.info("Fetching home run odds data")
+        response = requests.get(odds_url, timeout=10)
+        response.raise_for_status()
+        
+        odds_data = response.json()
+        
+        # Log games with odds available
+        games_with_odds = []
+        for game in odds_data.get('games', []):
+            away_team = game.get('away_team')
+            home_team = game.get('home_team')
+            games_with_odds.append(f"{away_team} @ {home_team}")
+            
+            for player in game.get('players', []):
+                if player.get('line') == 0.5:  # Only "To Hit HR" props
+                    player_name = player.get('player_name')
+                    consensus_odds = player.get('over_odds', {}).get('consensus')
+                    sportsbook_count = player.get('sportsbook_count', 0)
+                    
+                    if consensus_odds and sportsbook_count > 0:
+                        # Format odds with + sign for positive odds
+                        if str(consensus_odds).isdigit():
+                            formatted_odds = f"+{consensus_odds}"
+                        else:
+                            formatted_odds = str(consensus_odds)
+                        
+                        player_odds[player_name] = {
+                            'odds': formatted_odds,
+                            'raw_odds': consensus_odds,
+                            'sportsbook_count': sportsbook_count
+                        }
+        
+        logger.info(f"Odds available for {len(games_with_odds)} games: {', '.join(games_with_odds)}")
+        logger.info(f"Total players with HR odds: {len(player_odds)}")
+        
+        return player_odds
+        
+    except Exception as e:
+        logger.error(f"Error fetching home run odds: {e}")
+        return {}
+
 def fetch_daily_hitters_data():
     """Fetch and process all hitter data for the day"""
     logger.info("Fetching daily hitter data")
     
     try:
+        # Fetch home run odds first
+        odds_data = fetch_home_run_odds()
+        
+        # Get list of games with odds coverage for better user feedback
+        games_with_odds = set()
+        try:
+            odds_url = "https://djstrauss08.github.io/HomeRunOdds//api/v1/homerun-props.json"
+            response = requests.get(odds_url, timeout=10)
+            if response.status_code == 200:
+                odds_json = response.json()
+                for game in odds_json.get('games', []):
+                    away_team = game.get('away_team', '')
+                    home_team = game.get('home_team', '')
+                    games_with_odds.add(away_team)
+                    games_with_odds.add(home_team)
+        except Exception as e:
+            logger.warning(f"Could not fetch games with odds coverage: {e}")
+        
         # Fetch league leaders for home runs  
         leaders_raw = statsapi.league_leaders('homeRuns', statGroup='hitting', limit=50, season=CURRENT_SEASON, sportId=1)
         
@@ -837,12 +907,25 @@ def fetch_daily_hitters_data():
                 # Check if we have a matchup today by player name
                 opponent_today = player_name_to_opponent.get(player_name, "No game today")
                 
+                # Get today's odds for this player
+                player_odds = odds_data.get(player_name, {})
+                odds_display = player_odds.get('odds', 'N/A')
+                
+                # Provide better context for why odds aren't available
+                if odds_display == 'N/A' and opponent_today != "No game today":
+                    # Player has a game but no odds - check if their team is in odds coverage
+                    if team_name not in games_with_odds:
+                        odds_display = "Game not covered"
+                
                 hitters_data.append({
                     'name': player_name,
                     'team': team_name,
                     'opponent_today': opponent_today,
                     'at_bats': at_bats,
-                    'home_runs': home_runs
+                    'home_runs': home_runs,
+                    'todays_odds': odds_display,
+                    'odds_raw': player_odds.get('raw_odds'),
+                    'sportsbook_count': player_odds.get('sportsbook_count', 0)
                 })
             except Exception as e:
                 logger.error(f"Error processing hitter: {e}")
@@ -852,8 +935,16 @@ def fetch_daily_hitters_data():
         hitters_data.sort(key=lambda x: int(x.get('home_runs', 0)) if isinstance(x.get('home_runs'), (int, str)) and str(x.get('home_runs', 0)).isdigit() else 0, 
                          reverse=True)
         
-        result = {'hitters_data': hitters_data[:50], 'total_hitters': len(hitters_data)}
+        result = {
+            'hitters_data': hitters_data[:50], 
+            'total_hitters': len(hitters_data),
+            'odds_coverage': {
+                'games_with_odds': len(games_with_odds) // 2,  # Divide by 2 since we count both teams
+                'teams_covered': list(games_with_odds)
+            }
+        }
         logger.info(f"Successfully fetched hitter data for {len(hitters_data)} players")
+        logger.info(f"Odds coverage: {len(games_with_odds) // 2} games covered")
         return result
         
     except Exception as e:
@@ -898,22 +989,70 @@ def daily_data_update():
         traceback.print_exc()
 
 def cleanup_old_data():
-    """Remove data older than 7 days to keep database size manageable"""
-    cutoff_date = (datetime.strptime(get_mlb_today(), "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
-    
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    
+    """Clean up old data from the database (older than 7 days)"""
     try:
-        cursor.execute('DELETE FROM daily_data WHERE data_date < ?', (cutoff_date,))
-        deleted_count = cursor.rowcount
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Calculate cutoff date (7 days ago)
+        cutoff_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        # Delete old data
+        cursor.execute("DELETE FROM daily_data WHERE data_date < ?", (cutoff_date,))
+        deleted_rows = cursor.rowcount
+        
         conn.commit()
-        logger.info(f"Cleaned up {deleted_count} old data records")
-    except Exception as e:
-        logger.error(f"Error during cleanup: {e}")
-        conn.rollback()
-    finally:
         conn.close()
+        
+        logger.info(f"Cleaned up {deleted_rows} old data records (older than {cutoff_date})")
+    except Exception as e:
+        logger.error(f"Error cleaning up old data: {e}")
+
+# Popular teams to preload (most viewed teams)
+POPULAR_TEAMS = [
+    147,  # New York Yankees
+    121,  # New York Mets  
+    119,  # Los Angeles Dodgers
+    117,  # Houston Astros
+    111,  # Boston Red Sox
+    108,  # Los Angeles Angels
+    145,  # Chicago White Sox
+    112,  # Chicago Cubs
+    158,  # Milwaukee Brewers
+    143   # Philadelphia Phillies
+]
+
+def preload_popular_teams():
+    """Preload matchup data for popular teams in background"""
+    logger.info("Starting background preload of popular teams...")
+    
+    for i, team_id in enumerate(POPULAR_TEAMS):
+        try:
+            cache_key = f"matchup_{team_id}_{CURRENT_SEASON}"
+            cached_data = get_cached_data(TEAM_MATCHUP_CACHE, cache_key)
+            
+            if cached_data is None:
+                logger.info(f"Preloading team {team_id}... ({i+1}/{len(POPULAR_TEAMS)})")
+                # Make internal request to populate cache
+                with app.test_client() as client:
+                    response = client.get(f'/api/matchup_hitters/{team_id}')
+                    if response.status_code == 200:
+                        logger.info(f"Successfully preloaded team {team_id}")
+                    else:
+                        logger.warning(f"Failed to preload team {team_id}: {response.status_code}")
+                
+                # Add delay between requests to prevent overwhelming the system
+                if i < len(POPULAR_TEAMS) - 1:  # Don't delay after the last team
+                    time.sleep(2)  # 2 second delay between teams
+            else:
+                logger.info(f"Team {team_id} already cached")
+                
+        except Exception as e:
+            logger.error(f"Error preloading team {team_id}: {e}")
+            # Continue with next team instead of crashing
+            continue
+    
+    logger.info("Completed background preload of popular teams")
 
 def load_today_data_on_startup():
     """Load today's data from database on application startup"""
@@ -947,37 +1086,56 @@ def load_today_data_on_startup():
         logger.info("No cached data found for today, will fetch on first request")
 
 def setup_scheduler():
-    """Set up the background scheduler for daily updates"""
-    scheduler = BackgroundScheduler(timezone=EASTERN_TZ)
+    """Set up the background scheduler for daily updates and preloading"""
+    global scheduler
     
-    # Schedule daily update at 3:00 AM Eastern Time
-    scheduler.add_job(
-        func=daily_data_update,
-        trigger=CronTrigger(hour=3, minute=0, timezone=EASTERN_TZ),
-        id='daily_update',
-        name='Daily MLB Data Update (3 AM ET)',
-        replace_existing=True
-    )
-    
-    # Also run update immediately if no data exists for today
-    today_str = get_mlb_today()
-    if not load_daily_data('pitchers', today_str):
-        logger.info("No data for today found, scheduling immediate update...")
+    if scheduler is None:
+        scheduler = BackgroundScheduler()
+        
+        # Schedule daily data update at 3 AM Eastern
         scheduler.add_job(
             func=daily_data_update,
-            trigger='date',
-            run_date=get_eastern_time() + timedelta(seconds=10),
-            id='immediate_update',
-            name='Immediate MLB Data Update'
+            trigger="cron",
+            hour=3,
+            minute=0,
+            timezone=pytz.timezone('US/Eastern'),
+            id='daily_update',
+            replace_existing=True
         )
-    
-    scheduler.start()
-    logger.info("Background scheduler started - daily updates at 3:00 AM Eastern Time")
-    
-    # Shut down the scheduler when the app exits
-    atexit.register(lambda: scheduler.shutdown())
-    
-    return scheduler
+        
+        # Schedule popular teams preloading at 3:30 AM Eastern (after daily update)
+        scheduler.add_job(
+            func=preload_popular_teams,
+            trigger="cron", 
+            hour=3,
+            minute=30,
+            timezone=pytz.timezone('US/Eastern'),
+            id='preload_teams',
+            replace_existing=True
+        )
+        
+        # Schedule cleanup at 2 AM Eastern (before daily update)
+        scheduler.add_job(
+            func=cleanup_old_data,
+            trigger="cron",
+            hour=2,
+            minute=0,
+            timezone=pytz.timezone('US/Eastern'),
+            id='cleanup',
+            replace_existing=True
+        )
+        
+        try:
+            scheduler.start()
+            logger.info("Background scheduler started successfully")
+            logger.info("Scheduled jobs:")
+            logger.info("- Daily data update: 3:00 AM ET")
+            logger.info("- Popular teams preload: 3:30 AM ET") 
+            logger.info("- Data cleanup: 2:00 AM ET")
+        except Exception as e:
+            logger.error(f"Failed to start scheduler: {e}")
+    else:
+        logger.info("Scheduler already running")
 
 # Initialize database and scheduler on import
 init_database()
@@ -1599,128 +1757,168 @@ def matchup_hitters_page(team_id):
     
     return render_template('matchup_hitters.html', team_name=team_name, team_id=team_id, season=CURRENT_SEASON)
 
+# Add team matchup cache at the top level
+TEAM_MATCHUP_CACHE = {}
+
 @app.route('/api/matchup_hitters/<int:team_id>')
 def matchup_hitters_api(team_id):
-    # Logic to fetch top 10 hitters by HR for the given team_id
-    # and their stats (AB, HR, OPS, ISO, BABIP, HR/PA)
+    """Optimized matchup hitters API with improved caching and performance"""
+    
+    # Check if we have cached data for this team (cache for 1 hour)
+    cache_key = f"matchup_{team_id}_{CURRENT_SEASON}"
+    cached_data = get_cached_data(TEAM_MATCHUP_CACHE, cache_key)
+    if cached_data is not None:
+        logger.info(f"Serving cached matchup data for team {team_id}")
+        return jsonify(cached_data)
+    
+    logger.info(f"Fetching fresh matchup data for team {team_id}")
+    start_time = time.time()
+    
     matchup_data = []
     team_name = "Unknown Team"
+    
     try:
-        team_info_list = statsapi.lookup_team(team_id)
-        if isinstance(team_info_list, list) and team_info_list and isinstance(team_info_list[0], dict):
-            team_name = team_info_list[0].get('name', f"Team ID {team_id}")
-        elif isinstance(team_info_list, str): # API returned an error string
-            print(f"Error looking up team {team_id}: {team_info_list}")
-            return jsonify({'error': f"Could not find team: {team_info_list}", 'matchup_data': [], 'team_name': f"Error: {team_info_list}"})
-        else:
-            print(f"Could not find team name for team_id {team_id}, response: {team_info_list}")
-            team_name = f"Team ID {team_id} (Not Found)"
-            # Proceeding, but team name might be just ID
-
-        # Fetch team roster for the specific team
-        roster_data = get_team_roster(team_id)
-        player_ids_on_team = []
+        # Fetch home run odds data first
+        odds_data = fetch_home_run_odds()
+        logger.info(f"Fetched odds for {len(odds_data)} players")
         
-        if isinstance(roster_data, str):
-            # Improved roster parsing
-            if "Error" in roster_data:
-                print(f"Error fetching roster for team {team_id}: {roster_data}")
+        # Get team info with caching
+        team_info_cache_key = f"team_info_{team_id}"
+        team_info = get_cached_data(TEAM_ROSTER_CACHE, team_info_cache_key)
+        
+        if team_info is None:
+            team_info_list = statsapi.lookup_team(team_id)
+            if isinstance(team_info_list, list) and team_info_list and isinstance(team_info_list[0], dict):
+                team_info = team_info_list[0]
+                cache_data(TEAM_ROSTER_CACHE, team_info_cache_key, team_info, timeout=3600)  # 1 hour cache
             else:
-                # Parse the roster data line by line
-                for line in roster_data.split('\n'):
-                    if not line.strip():
-                        continue
-                        
-                    try:
-                        # Example format: "#9   LF  Brandon Nimmo"
-                        # Look for player ID in MLB API database using player name
-                        if '#' in line:
-                            # Extract player name from the line (typically after position)
-                            parts = line.strip().split()
-                            if len(parts) >= 3:  # Need at least [number, position, name]
-                                # The name is everything after the position
-                                player_name = ' '.join(parts[2:])
-                                print(f"Looking up player: {player_name}")
-                                
-                                # Lookup player ID from MLB API
-                                player_lookup = statsapi.lookup_player(player_name)
-                                if player_lookup and isinstance(player_lookup, list) and player_lookup:
-                                    player_id = player_lookup[0]['id']
-                                    print(f"Found player ID {player_id} for {player_name}")
-                                    player_ids_on_team.append(player_id)
-                                else:
-                                    print(f"Could not find ID for player {player_name}")
-                    except Exception as e:
-                        print(f"Error parsing player from line: {line}. Error: {e}")
-                        continue
-        else:
-            print(f"Unexpected roster format for team ID {team_id} (expected str): {roster_data}")
+                logger.error(f"Could not find team info for team {team_id}")
+                return jsonify({'error': f"Could not find team: {team_id}", 'matchup_data': [], 'team_name': f"Team ID {team_id}"})
         
-        print(f"Found {len(player_ids_on_team)} players on team {team_id}")
+        team_name = team_info.get('name', f"Team ID {team_id}")
         
-        # Process player stats
+        # Get roster with improved caching
+        roster_data = get_team_roster(team_id)
+        
+        if not isinstance(roster_data, str) or "Error" in roster_data:
+            logger.error(f"Error fetching roster for team {team_id}: {roster_data}")
+            return jsonify({'error': "Could not fetch team roster", 'matchup_data': [], 'team_name': team_name})
+        
+        # Parse roster more efficiently - extract all player names first
+        player_names = []
+        for line in roster_data.split('\n'):
+            if line.strip() and '#' in line:
+                try:
+                    parts = line.strip().split()
+                    if len(parts) >= 3:
+                        player_name = ' '.join(parts[2:])
+                        player_names.append(player_name)
+                except Exception as e:
+                    logger.warning(f"Error parsing roster line: {line}. Error: {e}")
+                    continue
+        
+        logger.info(f"Found {len(player_names)} players on roster for team {team_id}")
+        
+        # Batch lookup player IDs with caching
+        player_id_map = {}  # name -> id
+        for player_name in player_names:
+            # Check cache first
+            player_cache_key = f"player_lookup_{player_name.replace(' ', '_')}"
+            cached_player_id = get_cached_data(PLAYER_STATS_CACHE, player_cache_key)
+            
+            if cached_player_id is not None:
+                player_id_map[player_name] = cached_player_id
+            else:
+                try:
+                    player_lookup = statsapi.lookup_player(player_name)
+                    if player_lookup and isinstance(player_lookup, list) and player_lookup:
+                        player_id = player_lookup[0]['id']
+                        player_id_map[player_name] = player_id
+                        # Cache the lookup result for 24 hours
+                        cache_data(PLAYER_STATS_CACHE, player_cache_key, player_id, timeout=86400)
+                    else:
+                        logger.warning(f"Could not find ID for player {player_name}")
+                except Exception as e:
+                    logger.error(f"Error looking up player {player_name}: {e}")
+                    continue
+        
+        logger.info(f"Successfully mapped {len(player_id_map)} player IDs")
+        
+        # Fetch stats for all players with improved error handling
         player_details_list = []
-        for player_id in player_ids_on_team:
+        for player_name, player_id in player_id_map.items():
             try:
-                # Use caching for player stats
+                # Use existing caching for player stats
                 s_stats = get_player_stats(player_id, group="hitting", type="season")
                 adv_stats = get_player_stats(player_id, group="hitting", type="seasonAdvanced")
                 
-                # Only include players with at least 1 at bat
+                # Validate and process stats
                 at_bats = s_stats.get('atBats', 0)
-                if not at_bats or (isinstance(at_bats, str) and not at_bats.isdigit()):
-                    at_bats = 0
-                else:
+                if isinstance(at_bats, str) and at_bats.isdigit():
                     at_bats = int(at_bats)
+                elif not isinstance(at_bats, int):
+                    at_bats = 0
                 
-                if at_bats > 0:
-                    # Get home runs (default to 0 for sorting)
+                # Only include players with meaningful at-bats
+                if at_bats > 10:  # Increased threshold for better data quality
                     home_runs = s_stats.get('homeRuns', 0)
                     if isinstance(home_runs, str) and home_runs.isdigit():
                         home_runs = int(home_runs)
                     elif not isinstance(home_runs, int):
                         home_runs = 0
                     
-                    # Get OPS (On-base Plus Slugging)
-                    ops = s_stats.get('ops', "N/A")
-                    
-                    # Get BABIP (Batting Average on Balls In Play)
-                    babip = adv_stats.get('babip', "N/A")
-                    
-                    # Get ISO (Isolated Power) or calculate if available
-                    iso = adv_stats.get('iso', "N/A")
-                    
-                    # Get HR/PA (Home Runs per Plate Appearance)
-                    hr_pa = adv_stats.get('homeRunsPerPlateAppearance', "N/A")
+                    # Get today's odds for this player
+                    player_odds = odds_data.get(player_name, {})
+                    odds_display = player_odds.get('odds', 'N/A')
                     
                     player_details_list.append({
-                        'name': get_player_name(player_id),
+                        'name': player_name,  # Use cached name instead of lookup
                         'at_bats': at_bats,
                         'home_runs': home_runs,
-                        'ops': ops,
-                        'iso': iso,
-                        'babip': babip,
-                        'hr_pa': hr_pa
+                        'ops': s_stats.get('ops', "N/A"),
+                        'iso': adv_stats.get('iso', "N/A"),
+                        'babip': adv_stats.get('babip', "N/A"),
+                        'hr_pa': adv_stats.get('homeRunsPerPlateAppearance', "N/A"),
+                        'todays_odds': odds_display,
+                        'odds_raw': player_odds.get('raw_odds'),
+                        'sportsbook_count': player_odds.get('sportsbook_count', 0)
                     })
+                    
             except Exception as e:
-                print(f"Error fetching stats for player {player_id} on team {team_id}: {e}")
-                traceback_str = traceback.format_exc()
-                print(f"Traceback: {traceback_str}")
+                logger.error(f"Error fetching stats for player {player_name} (ID: {player_id}): {e}")
+                continue
         
         # Sort by home runs and take top 10
-        matchup_data = sorted(player_details_list, key=lambda x: x['home_runs'] if isinstance(x['home_runs'], int) else 0, reverse=True)[:10]
+        matchup_data = sorted(player_details_list, 
+                            key=lambda x: x['home_runs'] if isinstance(x['home_runs'], int) else 0, 
+                            reverse=True)[:10]
         
         if not matchup_data:
-            return jsonify({'error': "No hitter data available for this team.", 'matchup_data': [], 'team_name': team_name})
+            result = {'error': "No hitter data available for this team.", 'matchup_data': [], 'team_name': team_name}
+        else:
+            # Add summary stats for odds availability
+            players_with_odds = sum(1 for player in matchup_data if player['todays_odds'] != 'N/A')
+            result = {
+                'matchup_data': matchup_data, 
+                'team_name': team_name,
+                'odds_summary': {
+                    'players_with_odds': players_with_odds,
+                    'total_players': len(matchup_data)
+                }
+            }
+        
+        # Cache the result for 1 hour
+        cache_data(TEAM_MATCHUP_CACHE, cache_key, result, timeout=3600)
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"Matchup data for team {team_id} fetched in {elapsed_time:.2f} seconds")
+        
+        return jsonify(result)
 
     except Exception as e:
-        print(f"Error fetching matchup hitters data for team ID {team_id}: {e}")
-        traceback_str = traceback.format_exc()
-        print(f"Traceback: {traceback_str}")
+        logger.error(f"Error fetching matchup hitters data for team ID {team_id}: {e}")
         return jsonify({'error': f"Error fetching data: {e}", 'matchup_data': [], 'team_name': team_name})
 
-    return jsonify({'matchup_data': matchup_data, 'team_name': team_name})
-    
 # Add a route for application config information
 @app.route('/api/config')
 def app_config():
@@ -1756,7 +1954,7 @@ def daily_status():
             'hitters': load_daily_data('hitters', today_str) is not None,
             'schedule': load_daily_data('schedule', today_str) is not None
         },
-        'scheduler_running': scheduler.running if 'scheduler' in globals() else False,
+        'scheduler_running': scheduler.running if scheduler is not None else False,
         'next_scheduled_update': '3:00 AM Eastern Time daily'
     }
     
@@ -1790,18 +1988,42 @@ def trigger_update():
 @app.route('/api/clear_cache')
 def clear_cache_endpoint():
     # Only clear cache if authorized
-    if request.args.get('key') == 'admin123':  # Simple auth key
+    try:
+        # Clear all caches
         PLAYER_STATS_CACHE.clear()
         TEAM_ROSTER_CACHE.clear()
-        SCHEDULE_CACHE.clear()
-        # Also clear daily cache
-        DAILY_DATA_CACHE['pitchers'] = None
-        DAILY_DATA_CACHE['hitters'] = None
-        DAILY_DATA_CACHE['schedule'] = None
-        DAILY_DATA_CACHE['last_updated'] = None
-        DAILY_DATA_CACHE['update_date'] = None
-        return jsonify({'status': 'success', 'message': 'All caches cleared successfully'})
-    return jsonify({'status': 'error', 'message': 'Unauthorized'})
+        TEAM_MATCHUP_CACHE.clear()
+        
+        logger.info("All caches cleared successfully")
+        return jsonify({'success': True, 'message': 'All caches cleared successfully'})
+    except Exception as e:
+        logger.error(f"Error clearing caches: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/clear_matchup_cache')
+def clear_matchup_cache():
+    """Clear only the matchup cache for faster testing"""
+    try:
+        TEAM_MATCHUP_CACHE.clear()
+        logger.info("Matchup cache cleared successfully")
+        return jsonify({'success': True, 'message': 'Matchup cache cleared successfully'})
+    except Exception as e:
+        logger.error(f"Error clearing matchup cache: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/preload_teams')
+def preload_teams_endpoint():
+    """Manually trigger preloading of popular teams"""
+    try:
+        import threading
+        thread = threading.Thread(target=preload_popular_teams)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({'success': True, 'message': 'Preloading started in background'})
+    except Exception as e:
+        logger.error(f"Error starting preload: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080) 

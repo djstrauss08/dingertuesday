@@ -2,12 +2,70 @@
 {% block title %}MLB HR Handicapper - Hitter Stats{% endblock %}
 
 {% block content %}
+<style>
+    .odds-column {
+        font-weight: bold;
+        color: #28a745;
+    }
+    .odds-unavailable {
+        color: #6c757d;
+        font-style: italic;
+    }
+    .odds-info {
+        font-size: 0.85em;
+        color: #6c757d;
+        margin-top: 10px;
+    }
+    .coverage-info {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .coverage-info h5 {
+        color: #495057;
+        margin-bottom: 10px;
+    }
+    .coverage-stats {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+    .coverage-stat {
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #e9ecef;
+    }
+    .coverage-stat strong {
+        color: #007bff;
+    }
+</style>
+
 <h1 id="page-title">Top 50 Home Run Hitters</h1>
-<p id="page-subtitle">Displaying the top 50 hitters by home runs for the {{ season }} season, with today's matchups.</p>
+<p id="page-subtitle">Displaying the top 50 hitters by home runs for the {{ season }} season, with today's matchups and odds.</p>
 
 {% if error_message %}
 <div class="alert alert-warning">{{ error_message }}</div>
 {% endif %}
+
+<div id="coverage-info" class="coverage-info" style="display: none;">
+    <h5>📊 Today's Odds Coverage</h5>
+    <div class="coverage-stats">
+        <div class="coverage-stat">
+            <strong id="games-covered">0</strong> games with odds available
+        </div>
+        <div class="coverage-stat">
+            <strong id="teams-covered">0</strong> teams covered
+        </div>
+    </div>
+    <p class="mb-0 mt-2">
+        <small class="text-muted">
+            Players showing "Game not covered" have games today but odds aren't available for their matchup.
+        </small>
+    </p>
+</div>
 
 <div id="hitters-container">
     <div class="text-center my-5">
@@ -16,6 +74,12 @@
         </div>
         <p>Loading hitter data...</p>
     </div>
+</div>
+
+<div class="odds-info">
+    <strong>About Today's Odds:</strong> Home run prop betting odds are provided by <a href="https://djstrauss08.github.io/HomeRunOdds/" target="_blank">HomeRunOdds</a>. 
+    Odds may not be available for all games or players. "N/A" indicates that odds are not currently offered for that player's game.
+    Odds are consensus values across multiple sportsbooks when available.
 </div>
 
 <script>
@@ -33,6 +97,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 const formattedDate = date.toLocaleDateString('en-US', options);
                 document.getElementById('page-title').textContent = `Top 50 Home Run Hitters for ${formattedDate}`;
                 document.getElementById('page-subtitle').textContent = `Displaying the top 50 hitters by home runs for the 2025 season, with matchups for ${formattedDate}.`;
+            }
+            
+            // Update coverage information
+            if (data.odds_coverage) {
+                const coverageInfo = document.getElementById('coverage-info');
+                const gamesCovered = document.getElementById('games-covered');
+                const teamsCovered = document.getElementById('teams-covered');
+                
+                gamesCovered.textContent = data.odds_coverage.games_with_odds || 0;
+                teamsCovered.textContent = data.odds_coverage.teams_covered ? data.odds_coverage.teams_covered.length : 0;
+                
+                coverageInfo.style.display = 'block';
             }
             
             // Clear loading indicator
@@ -69,6 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <th>At-Bats</th>
                     <th>Home Runs</th>
                     <th>Today's Opponent</th>
+                    <th>Today's Odds</th>
                 </tr>
             `;
             table.appendChild(thead);
@@ -76,6 +153,17 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add table body
             const tbody = document.createElement('tbody');
             data.hitters_data.forEach(hitter => {
+                // Format odds display with additional info
+                let oddsDisplay = hitter.todays_odds || 'N/A';
+                let oddsClass = 'odds-unavailable';
+                
+                if (hitter.todays_odds && hitter.todays_odds !== 'N/A' && hitter.todays_odds !== 'Game not covered') {
+                    oddsClass = 'odds-column';
+                    if (hitter.sportsbook_count > 0) {
+                        oddsDisplay = `${hitter.todays_odds} (${hitter.sportsbook_count} books)`;
+                    }
+                }
+                
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${hitter.name}</td>
@@ -83,6 +171,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>${hitter.at_bats}</td>
                     <td>${hitter.home_runs}</td>
                     <td>${hitter.opponent_today}</td>
+                    <td class="${oddsClass}">${oddsDisplay}</td>
                 `;
                 tbody.appendChild(tr);
             });

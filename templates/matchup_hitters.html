@@ -15,22 +15,51 @@
 <div class="alert alert-warning">{{ error_message }}</div>
 {% endif %}
 
+<!-- Performance and Cache Status -->
+<div id="performance-info" class="alert alert-info" style="display: none;">
+    <small>
+        <strong>Load Time:</strong> <span id="load-time">--</span>s | 
+        <strong>Data Source:</strong> <span id="data-source">--</span>
+    </small>
+</div>
+
 <div id="matchup-container">
     <div class="text-center my-5">
         <div class="spinner-border text-primary" role="status">
             <span class="sr-only">Loading...</span>
         </div>
-        <p>Loading matchup data...</p>
+        <div class="mt-3">
+            <p><strong>Loading {{ team_name }} matchup data...</strong></p>
+            <p class="text-muted">
+                <small>First load may take 10-15 seconds while fetching fresh data.<br>
+                Subsequent loads will be much faster thanks to caching.</small>
+            </p>
+            <div class="progress mt-2" style="height: 4px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                     role="progressbar" style="width: 100%"></div>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const startTime = performance.now();
+    
     // Fetch matchup data from API
     fetch('/api/matchup_hitters/{{ team_id }}')
         .then(response => response.json())
         .then(data => {
+            const endTime = performance.now();
+            const loadTime = ((endTime - startTime) / 1000).toFixed(2);
+            
             const container = document.getElementById('matchup-container');
+            const performanceInfo = document.getElementById('performance-info');
+            
+            // Show performance info
+            document.getElementById('load-time').textContent = loadTime;
+            document.getElementById('data-source').textContent = loadTime < 1 ? 'Cache' : 'Fresh API';
+            performanceInfo.style.display = 'block';
             
             // Clear loading indicator
             container.innerHTML = '';
@@ -39,7 +68,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.error) {
                 const errorDiv = document.createElement('div');
                 errorDiv.className = 'alert alert-warning';
-                errorDiv.textContent = data.error;
+                errorDiv.innerHTML = `
+                    <h5>No Data Available</h5>
+                    <p>${data.error}</p>
+                    <small class="text-muted">This may be due to roster changes or API limitations.</small>
+                `;
                 container.appendChild(errorDiv);
                 return;
             }
@@ -48,38 +81,105 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!data.matchup_data || data.matchup_data.length === 0) {
                 const noDataDiv = document.createElement('div');
                 noDataDiv.className = 'alert alert-info';
-                noDataDiv.textContent = 'No hitter data available for this team.';
+                noDataDiv.innerHTML = `
+                    <h5>No Hitter Data</h5>
+                    <p>No qualifying hitters found for this team (minimum 10 at-bats required).</p>
+                `;
                 container.appendChild(noDataDiv);
                 return;
             }
+            
+            // Create stats summary
+            const statsDiv = document.createElement('div');
+            statsDiv.className = 'alert alert-success mb-3';
+            const totalHRs = data.matchup_data.reduce((sum, player) => sum + (player.home_runs || 0), 0);
+            const avgHRs = (totalHRs / data.matchup_data.length).toFixed(1);
+            
+            // Add odds summary if available
+            let oddsInfo = '';
+            if (data.odds_summary) {
+                oddsInfo = ` | ${data.odds_summary.players_with_odds}/${data.odds_summary.total_players} players with odds`;
+            }
+            
+            statsDiv.innerHTML = `
+                <small>
+                    <strong>Team Summary:</strong> 
+                    ${data.matchup_data.length} qualifying hitters | 
+                    ${totalHRs} total HRs | 
+                    ${avgHRs} avg HRs per player${oddsInfo}
+                </small>
+            `;
+            container.appendChild(statsDiv);
             
             // Create table
             const table = document.createElement('table');
             table.className = 'table table-striped table-hover';
             
-            // Add table header
+            // Add table header with better styling
             const thead = document.createElement('thead');
+            thead.className = 'thead-dark';
             thead.innerHTML = `
                 <tr>
-                    <th>Player</th>
-                    <th>At-Bats</th>
-                    <th>Home Runs</th>
-                    <th>OPS</th>
-                    <th>ISO</th>
-                    <th>BABIP</th>
-                    <th>HR/PA</th>
+                    <th style="cursor: pointer;" title="Click to sort">
+                        Player <i class="fas fa-sort text-muted"></i>
+                    </th>
+                    <th style="cursor: pointer;" title="Click to sort">
+                        At-Bats <i class="fas fa-sort text-muted"></i>
+                    </th>
+                    <th style="cursor: pointer;" title="Click to sort">
+                        Home Runs <i class="fas fa-sort text-muted"></i>
+                    </th>
+                    <th style="cursor: pointer;" title="Click to sort">
+                        Today's Odds <i class="fas fa-sort text-muted"></i>
+                    </th>
+                    <th style="cursor: pointer;" title="Click to sort">
+                        OPS <i class="fas fa-sort text-muted"></i>
+                    </th>
+                    <th style="cursor: pointer;" title="Click to sort">
+                        ISO <i class="fas fa-sort text-muted"></i>
+                    </th>
+                    <th style="cursor: pointer;" title="Click to sort">
+                        BABIP <i class="fas fa-sort text-muted"></i>
+                    </th>
+                    <th style="cursor: pointer;" title="Click to sort">
+                        HR/PA <i class="fas fa-sort text-muted"></i>
+                    </th>
                 </tr>
             `;
             table.appendChild(thead);
             
             // Add table body
             const tbody = document.createElement('tbody');
-            data.matchup_data.forEach(hitter => {
+            data.matchup_data.forEach((hitter, index) => {
                 const tr = document.createElement('tr');
+                
+                // Highlight top performers
+                if (index === 0) tr.classList.add('table-warning'); // Top HR hitter
+                
+                // Format odds display
+                let oddsDisplay = hitter.todays_odds || 'N/A';
+                let oddsClass = '';
+                if (oddsDisplay !== 'N/A') {
+                    oddsClass = 'text-success font-weight-bold';
+                    // Add sportsbook count if available
+                    if (hitter.sportsbook_count > 0) {
+                        oddsDisplay += ` <small class="text-muted">(${hitter.sportsbook_count})</small>`;
+                    }
+                } else {
+                    oddsClass = 'text-muted';
+                }
+                
                 tr.innerHTML = `
-                    <td>${hitter.name}</td>
+                    <td>
+                        <strong>${hitter.name}</strong>
+                        ${index === 0 ? '<span class="badge badge-warning ml-1">Top HR</span>' : ''}
+                    </td>
                     <td>${hitter.at_bats}</td>
-                    <td>${hitter.home_runs}</td>
+                    <td>
+                        <strong>${hitter.home_runs}</strong>
+                        ${hitter.home_runs >= 20 ? '<i class="fas fa-fire text-danger ml-1"></i>' : ''}
+                    </td>
+                    <td class="${oddsClass}">${oddsDisplay}</td>
                     <td>${hitter.ops}</td>
                     <td>${hitter.iso}</td>
                     <td>${hitter.babip}</td>
@@ -95,23 +195,40 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add sorting functionality
             const headers = table.querySelectorAll('th');
             headers.forEach(function(header, index) {
-                header.style.cursor = 'pointer';
                 header.addEventListener('click', function() {
                     sortTable(table, index, header);
                 });
             });
+            
+            // Add refresh button
+            const refreshDiv = document.createElement('div');
+            refreshDiv.className = 'text-center mt-3';
+            refreshDiv.innerHTML = `
+                <button class="btn btn-outline-primary btn-sm" onclick="location.reload()">
+                    <i class="fas fa-sync-alt"></i> Refresh Data
+                </button>
+                <small class="text-muted ml-2">Data cached for 1 hour</small>
+            `;
+            container.appendChild(refreshDiv);
         })
         .catch(error => {
+            const endTime = performance.now();
+            const loadTime = ((endTime - startTime) / 1000).toFixed(2);
+            
             console.error('Error fetching matchup data:', error);
             const container = document.getElementById('matchup-container');
             container.innerHTML = `
                 <div class="alert alert-danger">
-                    Error loading data. Please try again later.
+                    <h5>Error Loading Data</h5>
+                    <p>Failed to load matchup data after ${loadTime}s. Please try again later.</p>
+                    <button class="btn btn-outline-danger btn-sm" onclick="location.reload()">
+                        <i class="fas fa-redo"></i> Try Again
+                    </button>
                 </div>
             `;
         });
         
-    // Sorting function
+    // Sorting function with improved visual feedback
     function sortTable(table, columnIndex, header) {
         const tbody = table.querySelector('tbody');
         const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -119,18 +236,30 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get current sort direction
         const isAscending = !header.classList.contains('asc');
         
-        // Clear all headers classes
+        // Clear all headers classes and icons
         table.querySelectorAll('th').forEach(th => {
             th.classList.remove('asc', 'desc');
+            const icon = th.querySelector('i');
+            if (icon) {
+                icon.className = 'fas fa-sort text-muted';
+            }
         });
         
-        // Set new sort direction
+        // Set new sort direction and icon
         header.classList.add(isAscending ? 'asc' : 'desc');
+        const icon = header.querySelector('i');
+        if (icon) {
+            icon.className = isAscending ? 'fas fa-sort-up text-primary' : 'fas fa-sort-down text-primary';
+        }
         
         // Sort rows
         rows.sort((a, b) => {
             let aValue = a.cells[columnIndex].textContent.trim();
             let bValue = b.cells[columnIndex].textContent.trim();
+            
+            // Clean up values (remove badges, icons, etc.)
+            aValue = aValue.replace(/Top HR|🔥/g, '').trim();
+            bValue = bValue.replace(/Top HR|🔥/g, '').trim();
             
             // Try to convert to numbers if possible
             const aNum = parseFloat(aValue);
@@ -156,4 +285,23 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<style>
+.progress {
+    background-color: #e9ecef;
+}
+
+.table th {
+    border-top: none;
+}
+
+.table th.asc,
+.table th.desc {
+    background-color: #f8f9fa;
+}
+
+.badge {
+    font-size: 0.7em;
+}
+</style>
 {% endblock %} 
