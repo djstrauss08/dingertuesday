@@ -20,6 +20,7 @@ import requests
 import firebase_admin
 from firebase_admin import credentials, auth
 import pytz
+import shutil
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -1161,8 +1162,8 @@ def setup_scheduler():
     else:
         logger.info("Scheduler already running")
 
-# Initialize database on import
-init_database()
+# Initialize database on import with recovery capability
+initialize_database_with_recovery()
 load_today_data_on_startup()
 # Scheduler will be initialized after all functions are defined
 
@@ -2546,6 +2547,214 @@ def create_dinger_tuesday_pitcher_report():
 
 # Initialize scheduler after all functions are defined
 scheduler = setup_scheduler()
+
+# Database backup and restore functions for deployment persistence
+def backup_database():
+    """Create a backup of the current database"""
+    try:
+        import shutil
+        import os
+        from datetime import datetime
+        
+        if os.path.exists(DATABASE_PATH):
+            backup_dir = 'backups'
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_path = f"{backup_dir}/daily_mlb_data_backup_{timestamp}.sqlite"
+            
+            shutil.copy2(DATABASE_PATH, backup_path)
+            logger.info(f"Database backed up to {backup_path}")
+            
+            # Keep only the last 5 backups
+            backups = sorted([f for f in os.listdir(backup_dir) if f.startswith('daily_mlb_data_backup_')])
+            if len(backups) > 5:
+                for old_backup in backups[:-5]:
+                    os.remove(os.path.join(backup_dir, old_backup))
+                    logger.info(f"Removed old backup: {old_backup}")
+            
+            return backup_path
+        else:
+            logger.warning("No database file found to backup")
+            return None
+    except Exception as e:
+        logger.error(f"Error creating database backup: {e}")
+        return None
+
+def restore_database_from_backup(backup_path=None):
+    """Restore database from a backup file"""
+    try:
+        import shutil
+        import os
+        
+        if backup_path and os.path.exists(backup_path):
+            shutil.copy2(backup_path, DATABASE_PATH)
+            logger.info(f"Database restored from {backup_path}")
+            return True
+        else:
+            # Try to find the most recent backup
+            backup_dir = 'backups'
+            if os.path.exists(backup_dir):
+                backups = sorted([f for f in os.listdir(backup_dir) if f.startswith('daily_mlb_data_backup_')])
+                if backups:
+                    latest_backup = os.path.join(backup_dir, backups[-1])
+                    shutil.copy2(latest_backup, DATABASE_PATH)
+                    logger.info(f"Database restored from latest backup: {latest_backup}")
+                    return True
+            
+            logger.warning("No backup file found to restore")
+            return False
+    except Exception as e:
+        logger.error(f"Error restoring database: {e}")
+        return False
+
+def ensure_articles_table_exists():
+    """Ensure the articles table exists and has proper structure"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        # Check if blog_articles table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='blog_articles'")
+        table_exists = cursor.fetchone()
+        
+        if not table_exists:
+            logger.info("Articles table doesn't exist, creating it...")
+            cursor.execute('''
+                CREATE TABLE blog_articles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    summary TEXT,
+                    author TEXT DEFAULT 'MLB Analyst',
+                    tags TEXT,
+                    status TEXT DEFAULT 'published',
+                    slug TEXT UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+            logger.info("Articles table created successfully")
+        else:
+            logger.info("Articles table exists")
+            
+    except Exception as e:
+        logger.error(f"Error ensuring articles table exists: {e}")
+    finally:
+        conn.close()
+
+def initialize_database_with_recovery():
+    """Initialize database with backup recovery capability"""
+    try:
+        # Check if main database exists
+        if not os.path.exists(DATABASE_PATH):
+            logger.warning("Main database file not found, attempting recovery...")
+            
+            # Try to restore from backup
+            if not restore_database_from_backup():
+                logger.info("No backup found, initializing new database...")
+                init_database()
+            else:
+                logger.info("Database restored from backup successfully")
+        
+        # Ensure all required tables exist
+        ensure_articles_table_exists()
+        
+        # Create a backup after successful initialization
+        backup_database()
+        
+    except Exception as e:
+        logger.error(f"Error during database initialization with recovery: {e}")
+        # Fall back to standard initialization
+        init_database()
+
+@app.route('/api/backup_database', methods=['POST'])
+@require_admin
+def backup_database_endpoint():
+    """Create a backup of the database"""
+    try:
+        backup_path = backup_database()
+        if backup_path:
+            return jsonify({
+                'success': True,
+                'message': 'Database backup created successfully',
+                'backup_path': backup_path
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to create database backup'
+            }), 500
+    except Exception as e:
+        logger.error(f"Error in backup endpoint: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error creating backup: {str(e)}'
+        }), 500
+
+@app.route('/api/restore_database', methods=['POST'])
+@require_admin
+def restore_database_endpoint():
+    """Restore database from backup"""
+    try:
+        data = request.get_json()
+        backup_path = data.get('backup_path') if data else None
+        
+        success = restore_database_from_backup(backup_path)
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Database restored successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to restore database from backup'
+            }), 500
+    except Exception as e:
+        logger.error(f"Error in restore endpoint: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error restoring database: {str(e)}'
+        }), 500
+
+@app.route('/api/database_status', methods=['GET'])
+@require_admin
+def database_status_endpoint():
+    """Get database and backup status"""
+    try:
+        import os
+        
+        status = {
+            'database_exists': os.path.exists(DATABASE_PATH),
+            'database_size': os.path.getsize(DATABASE_PATH) if os.path.exists(DATABASE_PATH) else 0,
+            'backups': []
+        }
+        
+        # List available backups
+        backup_dir = 'backups'
+        if os.path.exists(backup_dir):
+            backups = [f for f in os.listdir(backup_dir) if f.startswith('daily_mlb_data_backup_')]
+            for backup in sorted(backups, reverse=True):
+                backup_path = os.path.join(backup_dir, backup)
+                status['backups'].append({
+                    'filename': backup,
+                    'path': backup_path,
+                    'size': os.path.getsize(backup_path),
+                    'created': os.path.getctime(backup_path)
+                })
+        
+        return jsonify({
+            'success': True,
+            'status': status
+        })
+    except Exception as e:
+        logger.error(f"Error getting database status: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error getting database status: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080) 

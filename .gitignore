@@ -30,10 +30,12 @@ ENV/
 env.bak/
 venv.bak/
 
-# Database files
-*.sqlite
-*.sqlite3
-*.db
+# Database files (allowing main database to be tracked for deployment)
+# *.sqlite
+# *.sqlite3
+# *.db
+mlb_api_cache.sqlite
+requests-cache*
 
 # Flask
 instance/

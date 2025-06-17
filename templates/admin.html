@@ -47,6 +47,27 @@
         <div id="action-result" class="mt-4"></div>
     </div>
     
+    <!-- Database Backup & Recovery -->
+    <div class="bg-white p-6 rounded-lg shadow border mb-6">
+        <h3 class="text-lg font-semibold mb-4" style="color: #111827 !important;">Database Backup & Recovery</h3>
+        <div class="mb-4" style="color: #374151 !important; font-weight: 500;">
+            Protect your articles and data from being lost during deployments. Create backups and restore from previous versions.
+        </div>
+        <div class="space-x-4 mb-4">
+            <button id="backup-database" style="background-color: #059669 !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; border: none; cursor: pointer;">
+                Create Backup Now
+            </button>
+            <button id="restore-database" style="background-color: #ea580c !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; border: none; cursor: pointer;">
+                Restore From Latest Backup
+            </button>
+            <button id="database-info" style="background-color: #6b7280 !important; color: white !important; padding: 12px 16px; border-radius: 6px; font-weight: 600; border: none; cursor: pointer;">
+                View Database Status
+            </button>
+        </div>
+        <div id="backup-status" class="mb-4" style="color: #1f2937 !important;">Loading backup status...</div>
+        <div id="backup-result" class="mt-4"></div>
+    </div>
+
     <!-- Blog Management -->
     <div class="bg-white p-6 rounded-lg shadow border mb-6">
         <h3 class="text-lg font-semibold mb-4" style="color: #111827 !important;">Blog Management</h3>
@@ -489,8 +510,158 @@ document.getElementById('test-scheduled-report').addEventListener('click', funct
         });
 });
 
+// Database backup functions
+function updateBackupStatus() {
+    fetch('/api/database_status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const status = data.status;
+                const backupStatusDiv = document.getElementById('backup-status');
+                
+                let backupsList = '';
+                if (status.backups && status.backups.length > 0) {
+                    backupsList = '<div style="margin-top: 12px;"><strong>Available Backups:</strong><ul style="margin-top: 8px; margin-left: 20px;">';
+                    status.backups.slice(0, 3).forEach(backup => {
+                        const date = new Date(backup.created * 1000).toLocaleString();
+                        const sizeMB = (backup.size / 1024 / 1024).toFixed(2);
+                        backupsList += `<li style="margin-bottom: 4px;">${backup.filename} (${sizeMB}MB, ${date})</li>`;
+                    });
+                    backupsList += '</ul></div>';
+                } else {
+                    backupsList = '<div style="margin-top: 12px; color: #dc2626; font-weight: 600;">⚠️ No backups found</div>';
+                }
+                
+                backupStatusDiv.innerHTML = `
+                    <div style="color: #1f2937 !important;">
+                        <div style="margin-bottom: 8px;">
+                            <strong>Database Status:</strong> 
+                            <span style="color: ${status.database_exists ? '#15803d' : '#dc2626'}; font-weight: 700;">
+                                ${status.database_exists ? '✓ Active' : '✗ Missing'}
+                            </span>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <strong>Database Size:</strong> ${(status.database_size / 1024 / 1024).toFixed(2)} MB
+                        </div>
+                        ${backupsList}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            document.getElementById('backup-status').innerHTML = `
+                <div style="color: #dc2626; font-weight: 600;">Error loading backup status: ${error.message}</div>
+            `;
+        });
+}
+
+// Backup database
+document.getElementById('backup-database').addEventListener('click', function() {
+    const button = this;
+    const resultDiv = document.getElementById('backup-result');
+    
+    button.disabled = true;
+    button.textContent = 'Creating Backup...';
+    button.style.opacity = '0.6';
+    
+    fetch('/api/backup_database', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; border-radius: 6px; border: 2px solid #16a34a; background-color: #dcfce7; color: #15803d; font-weight: 600; margin-top: 12px;">
+                        ✅ ${data.message}<br>
+                        <small style="color: #059669;">Backup saved to: ${data.backup_path}</small>
+                    </div>
+                `;
+                updateBackupStatus();
+            } else {
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; border-radius: 6px; border: 2px solid #dc2626; background-color: #fef2f2; color: #dc2626; font-weight: 600; margin-top: 12px;">
+                        ❌ ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            resultDiv.innerHTML = `
+                <div style="padding: 16px; border-radius: 6px; border: 2px solid #dc2626; background-color: #fef2f2; color: #dc2626; font-weight: 600; margin-top: 12px;">
+                    Error: ${error.message}
+                </div>
+            `;
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.textContent = 'Create Backup Now';
+            button.style.opacity = '1';
+        });
+});
+
+// Restore database
+document.getElementById('restore-database').addEventListener('click', function() {
+    if (!confirm('Are you sure you want to restore from the latest backup? This will replace your current database.')) {
+        return;
+    }
+    
+    const button = this;
+    const resultDiv = document.getElementById('backup-result');
+    
+    button.disabled = true;
+    button.textContent = 'Restoring...';
+    button.style.opacity = '0.6';
+    
+    fetch('/api/restore_database', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; border-radius: 6px; border: 2px solid #16a34a; background-color: #dcfce7; color: #15803d; font-weight: 600; margin-top: 12px;">
+                        ✅ ${data.message}<br>
+                        <small style="color: #059669;">Your articles and data have been restored!</small>
+                    </div>
+                `;
+                updateBackupStatus();
+                updateStatus();
+            } else {
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; border-radius: 6px; border: 2px solid #dc2626; background-color: #fef2f2; color: #dc2626; font-weight: 600; margin-top: 12px;">
+                        ❌ ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            resultDiv.innerHTML = `
+                <div style="padding: 16px; border-radius: 6px; border: 2px solid #dc2626; background-color: #fef2f2; color: #dc2626; font-weight: 600; margin-top: 12px;">
+                    Error: ${error.message}
+                </div>
+            `;
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.textContent = 'Restore From Latest Backup';
+            button.style.opacity = '1';
+        });
+});
+
+// Database info
+document.getElementById('database-info').addEventListener('click', function() {
+    updateBackupStatus();
+});
+
 // Load initial status
 updateStatus();
+updateBackupStatus();
 
 // Auto-refresh every 30 seconds
 setInterval(updateStatus, 30000);
