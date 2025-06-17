@@ -1163,7 +1163,7 @@ def setup_scheduler():
         logger.info("Scheduler already running")
 
 # Initialize database on import with recovery capability
-initialize_database_with_recovery()
+init_database()
 load_today_data_on_startup()
 # Scheduler will be initialized after all functions are defined
 
@@ -1313,6 +1313,24 @@ def get_daily_schedule(date_str=None):
 @app.route('/')
 def index():
     return render_template('index.html', season=CURRENT_SEASON)
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+# Debug route to test static file serving and GA
+@app.route('/debug/static')
+def debug_static():
+    static_path = os.path.join(app.root_path, 'static')
+    files = os.listdir(static_path)
+    return {
+        'static_path': static_path,
+        'files': files,
+        'favicon_ico_exists': os.path.exists(os.path.join(static_path, 'favicon.ico')),
+        'favicon_png_exists': os.path.exists(os.path.join(static_path, 'favicon.png')),
+        'ga_measurement_id': 'G-H0ZR5N8SS8'
+    }
 
 @app.route('/pitchers')
 def pitchers_page():
@@ -2768,47 +2786,7 @@ def get_deployment_environment():
     else:
         return 'local'
 
-# Enhanced database initialization for different environments
-def initialize_database_with_recovery():
-    """Initialize database with environment-specific recovery and optimization"""
-    try:
-        deployment_env = get_deployment_environment()
-        logger.info(f"Detected deployment environment: {deployment_env}")
-        
-        # Environment-specific optimizations
-        if deployment_env == 'cloudrun':
-            logger.info("Applying Cloud Run optimizations...")
-            # Ensure database directory exists (important for volume mounts)
-            os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-            
-        elif deployment_env == 'replit':
-            logger.info("Applying Replit optimizations...")
-            # Replit-specific setup if needed
-            pass
-        
-        # Check if database exists
-        if not os.path.exists(DATABASE_PATH):
-            logger.warning(f"Database not found at {DATABASE_PATH}")
-            
-            # Try to restore from backup
-            if restore_from_latest_backup():
-                logger.info("Successfully restored from backup")
-            else:
-                logger.info("No backup found, initializing new database")
-                init_database()
-        else:
-            logger.info(f"Database found at {DATABASE_PATH}")
-            init_database()  # This will just ensure tables exist
-            
-        # Create automatic backup on startup for production environments
-        if deployment_env in ['cloudrun', 'replit']:
-            logger.info("Creating startup backup...")
-            backup_database()
-            
-    except Exception as e:
-        logger.error(f"Database initialization error: {e}")
-        # Fallback to basic initialization
-        init_database()
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080) 
