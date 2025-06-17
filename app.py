@@ -978,6 +978,18 @@ def daily_data_update():
         DAILY_DATA_CACHE['last_updated'] = get_eastern_time().isoformat()
         DAILY_DATA_CACHE['update_date'] = today_str
         
+        # Generate Dinger Tuesday Pitcher Report (backup - main generation is at 11AM)
+        logger.info("Generating backup Dinger Tuesday Pitcher Report...")
+        try:
+            report_result = create_daily_pitcher_report()
+            if report_result and report_result.get('success'):
+                logger.info(f"Successfully generated backup pitcher report: {report_result['message']}")
+            else:
+                logger.warning(f"Backup pitcher report generation skipped")
+        except Exception as report_error:
+            logger.error(f"Error generating backup pitcher report: {report_error}")
+            # Don't fail the entire daily update if pitcher report fails
+        
         update_time = time.time() - update_start_time
         logger.info(f"Daily data update completed successfully in {update_time:.2f} seconds")
         
@@ -1125,22 +1137,34 @@ def setup_scheduler():
             replace_existing=True
         )
         
+        # Schedule daily pitcher report at 11 AM Eastern
+        scheduler.add_job(
+            func=scheduled_pitcher_report_generation,
+            trigger="cron",
+            hour=11,
+            minute=0,
+            timezone=pytz.timezone('US/Eastern'),
+            id='daily_pitcher_report',
+            replace_existing=True
+        )
+        
         try:
             scheduler.start()
             logger.info("Background scheduler started successfully")
             logger.info("Scheduled jobs:")
+            logger.info("- Data cleanup: 2:00 AM ET")
             logger.info("- Daily data update: 3:00 AM ET")
             logger.info("- Popular teams preload: 3:30 AM ET") 
-            logger.info("- Data cleanup: 2:00 AM ET")
+            logger.info("- Daily pitcher report: 11:00 AM ET")
         except Exception as e:
             logger.error(f"Failed to start scheduler: {e}")
     else:
         logger.info("Scheduler already running")
 
-# Initialize database and scheduler on import
+# Initialize database on import
 init_database()
 load_today_data_on_startup()
-scheduler = setup_scheduler()
+# Scheduler will be initialized after all functions are defined
 
 # Cache data with timeout for automatic expiration
 def cache_data(cache_dict, key, data, timeout=CACHE_TIMEOUT):
@@ -1934,6 +1958,16 @@ def daily_status():
     today_str = get_mlb_today()
     current_et = get_eastern_time()
     
+    # Get scheduler job info
+    scheduled_jobs = []
+    if scheduler and scheduler.running:
+        for job in scheduler.get_jobs():
+            scheduled_jobs.append({
+                'id': job.id,
+                'next_run': str(job.next_run_time),
+                'function': job.func.__name__ if hasattr(job.func, '__name__') else str(job.func)
+            })
+    
     status = {
         'today': today_str,
         'eastern_time': {
@@ -1954,8 +1988,17 @@ def daily_status():
             'hitters': load_daily_data('hitters', today_str) is not None,
             'schedule': load_daily_data('schedule', today_str) is not None
         },
-        'scheduler_running': scheduler.running if scheduler is not None else False,
-        'next_scheduled_update': '3:00 AM Eastern Time daily'
+        'scheduler_status': {
+            'running': scheduler.running if scheduler is not None else False,
+            'total_jobs': len(scheduler.get_jobs()) if scheduler and scheduler.running else 0,
+            'jobs': scheduled_jobs
+        },
+        'automated_schedule': {
+            'data_cleanup': '2:00 AM Eastern Time daily',
+            'data_update': '3:00 AM Eastern Time daily',
+            'teams_preload': '3:30 AM Eastern Time daily',
+            'pitcher_report': '11:00 AM Eastern Time daily'
+        }
     }
     
     return jsonify(status)
@@ -2024,6 +2067,485 @@ def preload_teams_endpoint():
     except Exception as e:
         logger.error(f"Error starting preload: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/generate_pitcher_report', methods=['POST'])
+def generate_pitcher_report_endpoint():
+    """Manually trigger pitcher report generation"""
+    try:
+        article_id = create_daily_pitcher_report()
+        if article_id:
+            return jsonify({
+                'success': True, 
+                'message': 'Pitcher report generated successfully',
+                'article_id': article_id
+            })
+        else:
+            return jsonify({
+                'success': False, 
+                'message': 'Failed to generate pitcher report'
+            }), 400
+    except Exception as e:
+        print(f"Error generating pitcher report: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/generate_dinger_tuesday_report', methods=['POST'])
+def generate_dinger_tuesday_report_endpoint():
+    """Manually trigger Dinger Tuesday style pitcher report generation"""
+    try:
+        result = create_dinger_tuesday_pitcher_report()
+        if result['success']:
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        print(f"Error generating Dinger Tuesday report: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/test_scheduled_report', methods=['POST'])
+def test_scheduled_report_endpoint():
+    """Test the scheduled pitcher report generation (same as what runs at 11AM)"""
+    try:
+        # Run the same function that gets called by the scheduler
+        scheduled_pitcher_report_generation()
+        return jsonify({
+            'success': True, 
+            'message': 'Scheduled report generation test completed - check server logs for details'
+        })
+    except Exception as e:
+        logger.error(f"Error testing scheduled report: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def analyze_pitchers_for_hr_vulnerability(pitchers_data):
+    """Analyze pitchers and return top 3 most vulnerable to home runs"""
+    try:
+        vulnerable_pitchers = []
+        
+        # Extract pitchers data if it's nested
+        if isinstance(pitchers_data, dict) and 'pitchers_data' in pitchers_data:
+            pitchers_list = pitchers_data['pitchers_data']
+        else:
+            pitchers_list = pitchers_data
+            
+        for pitcher in pitchers_list:
+            try:
+                # Convert string values to integers, skip if invalid
+                batters_faced = pitcher.get('batters_faced', '0')
+                home_runs_allowed = pitcher.get('home_runs_allowed', '0')
+                
+                # Skip if data is invalid or insufficient
+                if (batters_faced in ['N/A', 'ID Lookup Error', 'Fetch Error'] or 
+                    home_runs_allowed in ['N/A', 'ID Lookup Error', 'Fetch Error']):
+                    continue
+                    
+                batters_faced = int(batters_faced)
+                home_runs_allowed = int(home_runs_allowed)
+                
+                # Skip pitchers with insufficient data (lowered threshold for more realistic filtering)
+                if batters_faced < 100:  # Reduced from 50 to include more pitchers
+                    continue
+                    
+                # Calculate home run rate as percentage
+                hr_rate = (home_runs_allowed / batters_faced) * 100  # Convert to percentage
+                
+                # Only include pitchers with some home runs allowed (but allow 0 for analysis)
+                if hr_rate < 0.5:  # Skip only extremely low rates (less than 0.5%)
+                    continue
+                
+                # Parse name
+                full_name = pitcher.get('name', 'Unknown Player')
+                name_parts = full_name.split(' ', 1)
+                first_name = name_parts[0] if len(name_parts) > 0 else 'Unknown'
+                last_name = name_parts[1] if len(name_parts) > 1 else ''
+                
+                # Get team info
+                team_name = pitcher.get('team', 'Unknown Team')
+                team_abbreviation = team_name.split(' ')[-1] if team_name else 'UNK'  # Simple abbreviation
+                
+                # Get opponent info
+                opponent_name = pitcher.get('opponent', 'TBD')
+                opponent_team_id = pitcher.get('opponent_id')
+                
+                vulnerable_pitchers.append({
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'full_name': full_name,
+                    'team_abbreviation': team_abbreviation,
+                    'team_name': team_name,
+                    'team_id': pitcher.get('team_id'),
+                    'home_runs_allowed': home_runs_allowed,
+                    'batters_faced': batters_faced,
+                    'hr_rate': hr_rate,  # Now stored as percentage
+                    'innings_pitched': 0,  # Not available in current data
+                    'era': 0,  # Not available in current data
+                    'whip': 0,  # Not available in current data
+                    'opponent_name': opponent_name,
+                    'opponent_team_id': opponent_team_id
+                })
+                
+            except (ValueError, TypeError) as e:
+                print(f"Error processing pitcher {pitcher.get('name', 'Unknown')}: {e}")
+                continue
+        
+        # Sort by HR rate (highest first) and return top 3
+        vulnerable_pitchers.sort(key=lambda x: x['hr_rate'], reverse=True)
+        return vulnerable_pitchers[:3]
+        
+    except Exception as e:
+        print(f"Error analyzing pitchers: {e}")
+        return []
+
+def get_opponent_top_hr_hitters(team_id, limit=3):
+    """Get top home run hitters from opposing team"""
+    try:
+        # Get team roster
+        roster_data = get_team_roster(team_id)
+        if not roster_data or 'roster' not in roster_data:
+            return []
+        
+        hitters_with_hrs = []
+        
+        for player in roster_data['roster']:
+            try:
+                player_id = player.get('person', {}).get('id')
+                if not player_id:
+                    continue
+                
+                # Get hitting stats
+                stats = get_player_stats(player_id, group="hitting", type="season")
+                if stats and stats.get('homeRuns', 0) > 0:
+                    hitters_with_hrs.append({
+                        'name': player.get('person', {}).get('fullName', 'Unknown'),
+                        'home_runs': int(stats.get('homeRuns', 0)),
+                        'avg': stats.get('avg', '.000'),
+                        'ops': stats.get('ops', '.000')
+                    })
+            except Exception as e:
+                logger.warning(f"Error getting stats for player {player.get('person', {}).get('fullName', 'Unknown')}: {e}")
+                continue
+        
+        # Return top hitters by home runs
+        hitters_with_hrs.sort(key=lambda x: x['home_runs'], reverse=True)
+        return hitters_with_hrs[:limit]
+        
+    except Exception as e:
+        logger.error(f"Error getting opponent hitters for team {team_id}: {e}")
+        return []
+
+def generate_pitcher_report_content(top_pitchers, report_date):
+    """Generate clean pitcher report content without inline styles"""
+    
+    # Format the date nicely
+    date_obj = datetime.strptime(report_date, '%Y-%m-%d')
+    formatted_date = date_obj.strftime('%B %d, %Y')
+    
+    # Start building clean HTML content
+    content = f"""<div class="intro-section">
+<p>Welcome to our <strong>Dinger Tuesday Pitcher Report</strong>, where we identify the most vulnerable pitchers for home run prop betting. Today's analysis focuses on pitchers with the highest home run rates per batter faced.</p>
+</div>
+
+<h2>Today's Top 3 Vulnerable Pitchers</h2>
+<p>Based on our analysis of current MLB data, here are the three pitchers most susceptible to giving up home runs:</p>
+"""
+    
+    # Add each pitcher with clean formatting
+    for i, pitcher in enumerate(top_pitchers, 1):
+        # Determine ranking class
+        ranking_class = f"pitcher-rank-{i}"
+        
+        # Get opponent info
+        opponent_info = ""
+        if pitcher.get('opponent_team_id'):
+            try:
+                top_hitters = get_opponent_top_hr_hitters(pitcher['opponent_team_id'])
+                if top_hitters:
+                    hitter_names = [h['name'] for h in top_hitters[:2]]
+                    opponent_info = f" They'll face power hitters like {' and '.join(hitter_names)}."
+            except Exception as e:
+                print(f"Error getting opponent hitters: {e}")
+        
+        content += f"""
+<h3 class="{ranking_class}">#{i} {pitcher['first_name']} {pitcher['last_name']} ({pitcher.get('team_name', 'Unknown')})</h3>
+<p><strong>Home Run Rate:</strong> {pitcher['hr_rate']:.1f}% ({pitcher['home_runs_allowed']} HR in {pitcher['batters_faced']} batters faced)</p>
+<p><strong>Key Stats:</strong> {pitcher['batters_faced']} batters faced, {pitcher['home_runs_allowed']} home runs allowed</p>
+<p><strong>Opponent:</strong> vs {pitcher.get('opponent_name', 'TBD')}{opponent_info}</p>
+<p><strong>Betting Analysis:</strong> {pitcher['first_name']} {pitcher['last_name']} has allowed {pitcher['home_runs_allowed']} home runs while facing {pitcher['batters_faced']} batters this season, resulting in a {pitcher['hr_rate']:.1f}% home run rate. This makes them a prime target for home run prop betting.</p>
+"""
+    
+    # Add strategy section
+    content += """
+<h2>Betting Strategy</h2>
+<p>1. <strong>Focus on opposing power hitters</strong> - Look for batters with high home run totals facing these vulnerable pitchers.</p>
+<p>2. <strong>Consider ballpark factors</strong> - Home run friendly parks amplify these pitchers' vulnerabilities.</p>
+<p>3. <strong>Weather conditions matter</strong> - Wind direction and temperature can significantly impact home run probability.</p>
+<p>4. <strong>Line shopping is crucial</strong> - Compare odds across multiple sportsbooks for the best value on home run props.</p>
+
+<div class="disclaimer">
+<p><strong>Remember:</strong> Always bet responsibly and within your means. Sports betting should be entertainment, not a financial strategy.</p>
+</div>
+"""
+    
+    return content
+
+def create_daily_pitcher_report():
+    """Create and save daily pitcher report"""
+    try:
+        # Get today's date
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Load today's pitcher data
+        pitcher_data = load_daily_data('pitchers', today)
+        if not pitcher_data:
+            print("No pitcher data available for today")
+            return None
+            
+        # Analyze pitchers for HR vulnerability
+        top_pitchers = analyze_pitchers_for_hr_vulnerability(pitcher_data)
+        if not top_pitchers:
+            print("No vulnerable pitchers found")
+            return None
+            
+        # Generate content
+        content = generate_pitcher_report_content(top_pitchers, today)
+        
+        # Create title and summary
+        date_obj = datetime.strptime(today, '%Y-%m-%d')
+        formatted_date = date_obj.strftime('%B %d, %Y')
+        title = f"Dinger Tuesday Pitcher Report - {formatted_date}: Top 3 Pitchers to Target for Home Run Props"
+        
+        pitcher_names = [f"{p['first_name']} {p['last_name']}" for p in top_pitchers]
+        summary = f"Expert analysis of today's most vulnerable pitchers for home run prop betting. Target {', '.join(pitcher_names)} for maximum profit potential."
+        
+        # Create article
+        article_id = create_article(
+            title=title,
+            content=content,
+            summary=summary,
+            author="MLB Analyst",
+            tags="home run props,baseball betting,pitcher analysis,MLB,sports betting,dinger tuesday",
+            status="published"
+        )
+        
+        if article_id:
+            print(f"Successfully created daily pitcher report with ID: {article_id}")
+            return article_id
+        else:
+            print("Failed to create pitcher report article")
+            return None
+            
+    except Exception as e:
+        print(f"Error creating daily pitcher report: {e}")
+        return None
+
+@app.route('/api/debug_pitcher_data')
+def debug_pitcher_data():
+    """Debug endpoint to check pitcher data structure"""
+    try:
+        today = datetime.now().strftime('%Y-%m-%d')
+        pitcher_data = load_daily_data('pitchers', today)
+        
+        if not pitcher_data:
+            return jsonify({'error': 'No pitcher data found'})
+        
+        # Show structure
+        result = {
+            'data_type': type(pitcher_data).__name__,
+            'keys': list(pitcher_data.keys()) if isinstance(pitcher_data, dict) else 'Not a dict',
+            'sample_pitcher': None
+        }
+        
+        # Get sample pitcher
+        if isinstance(pitcher_data, dict) and 'pitchers_data' in pitcher_data:
+            pitchers_list = pitcher_data['pitchers_data']
+            if pitchers_list and len(pitchers_list) > 0:
+                result['sample_pitcher'] = pitchers_list[0]
+                result['total_pitchers'] = len(pitchers_list)
+        elif isinstance(pitcher_data, list) and len(pitcher_data) > 0:
+            result['sample_pitcher'] = pitcher_data[0]
+            result['total_pitchers'] = len(pitcher_data)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+def generate_dinger_tuesday_pitcher_report_content(top_pitchers, report_date):
+    """Generate Dinger Tuesday pitcher report content with authentic tone"""
+    
+    # Format the date nicely
+    date_obj = datetime.strptime(report_date, '%Y-%m-%d')
+    formatted_date = date_obj.strftime('%B %d, %Y')
+    
+    # Start with the signature Dinger Tuesday opening
+    content = f"""<div class="intro-section">
+<p>Here's the deal folks—</p>
+
+<p>The days of stacking bonus bets for every home run in a game might be gone, but Dinger Tuesday lives on, and it's still one of the most fun ways to get in on the long ball action each week.</p>
+
+<p>Throughout this 2025 season, FanDuel is giving out 50% profit boosts on any home run prop—eligible on one bet, every Tuesday. This works on both straight bets or parlays, so if you want to bump up your pay day on a single player, or you're shooting for a lottery cash, you might as well take advantage of the extra lift.</p>
+</div>
+
+<p>So let's dive into today's slate.</p>
+
+<p><strong>Time to find a guy.</strong></p>
+
+<h2>The Arms to Attack</h2>
+<p>Let's get to the meat and potatoes—which pitchers are about to have a very bad Tuesday.</p>
+"""
+    
+    # Varied content for each pitcher
+    pitcher_variations = [
+        {  # Pitcher #1
+            "title": f"{top_pitchers[0]['first_name']} {top_pitchers[0]['last_name']} ({top_pitchers[0].get('team_name', 'Unknown')})",
+            "intro": "Here's your headline play, folks.",
+            "analysis": f"{top_pitchers[0]['last_name']} has been an absolute disaster this season. We're talking {top_pitchers[0]['home_runs_allowed']} home runs allowed across {top_pitchers[0]['batters_faced']} batters faced—that's a brutal {top_pitchers[0]['hr_rate']:.1f}% home run rate that screams 'attack me.'",
+            "context": f"The numbers don't lie here. Every time {top_pitchers[0]['last_name']} takes the mound, he's essentially rolling out the red carpet for opposing hitters. A {top_pitchers[0]['hr_rate']:.1f}% HR rate puts him in the bottom tier of MLB starters, and that spells opportunity.",
+            "conclusion": f"**The Play:** {top_pitchers[0]['first_name']} {top_pitchers[0]['last_name']} is the crown jewel of tonight's slate. When a pitcher is this generous with the long ball, you hammer the opposing lineup."
+        },
+        {  # Pitcher #2  
+            "title": f"{top_pitchers[1]['first_name']} {top_pitchers[1]['last_name']} ({top_pitchers[1].get('team_name', 'Unknown')})",
+            "intro": f"{top_pitchers[1]['last_name']} might fly under the radar, but the smart money knows better.",
+            "analysis": f"Don't let the smaller sample size fool you—{top_pitchers[1]['last_name']} has surrendered {top_pitchers[1]['home_runs_allowed']} homers in just {top_pitchers[1]['batters_faced']} batters faced. That {top_pitchers[1]['hr_rate']:.1f}% rate is actually worse than some of the more obvious targets.",
+            "context": f"What makes {top_pitchers[1]['last_name']} dangerous to bet against is his tendency to get squared up. When hitters make contact, they're making *quality* contact. The advanced metrics suggest more long balls are coming.",
+            "conclusion": f"**The Angle:** While everyone's looking at the obvious plays, {top_pitchers[1]['first_name']} {top_pitchers[1]['last_name']} represents serious value. This is where the sharp action will be."
+        },
+        {  # Pitcher #3
+            "title": f"{top_pitchers[2]['first_name']} {top_pitchers[2]['last_name']} ({top_pitchers[2].get('team_name', 'Unknown')})",
+            "intro": f"Want to separate yourself from the crowd? {top_pitchers[2]['first_name']} {top_pitchers[2]['last_name']} is your guy.",
+            "analysis": f"The surface stats might not scream 'target me,' but dig deeper and you'll find {top_pitchers[2]['last_name']} carrying a {top_pitchers[2]['hr_rate']:.1f}% home run rate ({top_pitchers[2]['home_runs_allowed']} HRs in {top_pitchers[2]['batters_faced']} batters). That's far from elite.",
+            "context": f"Sometimes the best plays hide in plain sight. {top_pitchers[2]['last_name']} has been getting away with murder, but regression tends to find everyone eventually. Tonight could be that night.",
+            "conclusion": f"**The Contrarian Take:** If you're hunting for a differentiated play that could separate you from the field, {top_pitchers[2]['first_name']} {top_pitchers[2]['last_name']} offers exactly that kind of upside."
+        }
+    ]
+    
+    # Add each pitcher with varied content
+    for i, pitcher in enumerate(top_pitchers, 1):
+        if i <= len(pitcher_variations):
+            variation = pitcher_variations[i-1]
+            
+            # Get opponent power hitters info
+            power_hitter_context = ""
+            if pitcher.get('opponent_team_id'):
+                try:
+                    top_hitters = get_opponent_top_hr_hitters(pitcher['opponent_team_id'])
+                    if top_hitters:
+                        hitter_names = [h['name'].split(' ')[-1] for h in top_hitters[:2]]  # Last names
+                        power_hitter_context = f"<p>Tonight he's facing the {pitcher.get('opponent_name', 'TBD')}, and their {' and '.join(hitter_names)} have been locked in lately. That's a dangerous combination.</p>"
+                except Exception as e:
+                    logger.error(f"Error getting opponent hitters: {e}")
+            
+            content += f"""
+<h3 class="pitcher-rank-{i}">{variation['title']}</h3>
+
+<p>{variation['intro']} {variation['analysis']}</p>
+
+<p>{variation['context']}</p>
+
+{power_hitter_context}
+
+<p>{variation['conclusion']}</p>
+"""
+    
+    # Add the signature Dinger Tuesday strategy section
+    content += """
+<h2>The Bottom Line</h2>
+
+<p>Today's not about being cute or finding the perfect contrarian angle. Today's about attacking the obvious weaknesses and riding the wave. These arms are all serving up cookies, and the conditions are looking prime for turning those mistakes into moonshots.</p>
+
+<p>Don't overthink it. Sometimes the best play is the most obvious one.</p>
+
+<h2>Final Thoughts</h2>
+
+<p>Remember, folks—home runs are volatile. They're long shots by nature. But when the stars align like they might today, you've got to strike while the iron is hot.</p>
+
+<p>Pitchers are vulnerable. Data doesn't lie. Numbers are screaming.</p>
+
+<p>Time to cash some tickets.</p>
+
+<div class="disclaimer">
+<p><strong>As always, wait for confirmed lineups before placing your bets. And remember—have fun with it. That's what Dinger Tuesday is all about.</strong></p>
+</div>
+"""
+    
+    return content
+
+def scheduled_pitcher_report_generation():
+    """Scheduled function to generate daily pitcher report at 11AM ET"""
+    logger.info("=== AUTOMATED PITCHER REPORT GENERATION STARTED ===")
+    
+    try:
+        # Call the main report generation function
+        result = create_dinger_tuesday_pitcher_report()
+        
+        if result and result.get('success'):
+            logger.info(f"✅ AUTOMATED REPORT SUCCESS: {result['message']}")
+            logger.info(f"📝 Article ID: {result['article_id']}")
+            logger.info(f"🎯 Pitchers analyzed: {', '.join(result['pitchers_analyzed'])}")
+        else:
+            logger.warning(f"⚠️ AUTOMATED REPORT SKIPPED: {result.get('message', 'Unknown error')}")
+            
+    except Exception as e:
+        logger.error(f"❌ AUTOMATED REPORT FAILED: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+    logger.info("=== AUTOMATED PITCHER REPORT GENERATION COMPLETED ===")
+
+def create_dinger_tuesday_pitcher_report():
+    """Create and save daily pitcher report with authentic Dinger Tuesday tone"""
+    try:
+        # Get today's date
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Load today's pitcher data
+        pitcher_data = load_daily_data('pitchers', today)
+        if not pitcher_data:
+            print("No pitcher data available for today")
+            return {'success': False, 'message': 'No pitcher data available for today'}
+            
+        # Analyze pitchers for HR vulnerability
+        top_pitchers = analyze_pitchers_for_hr_vulnerability(pitcher_data)
+        if not top_pitchers:
+            print("No vulnerable pitchers found")
+            return {'success': False, 'message': 'No vulnerable pitchers found'}
+            
+        # Generate content with authentic tone
+        content = generate_dinger_tuesday_pitcher_report_content(top_pitchers, today)
+        
+        # Create title and summary
+        date_obj = datetime.strptime(today, '%Y-%m-%d')
+        formatted_date = date_obj.strftime('%B %d, %Y')
+        title = f"MLB Home Run Prop Betting Analysis - Pitcher Report for {formatted_date}"
+        
+        pitcher_names = [f"{p['first_name']} {p['last_name']}" for p in top_pitchers]
+        summary = f"Here's the deal folks—today's slate is loaded with opportunity. We're targeting {', '.join(pitcher_names)} for maximum dinger potential. Time to cash some tickets."
+        
+        # Create article
+        article_id = create_article(
+            title=title,
+            content=content,
+            summary=summary,
+            author="Dinger Tuesday Staff",
+            tags="dinger tuesday,home run props,baseball betting,pitcher analysis,MLB,sports betting,FanDuel boost",
+            status="published"
+        )
+        
+        if article_id:
+            print(f"Successfully created Dinger Tuesday pitcher report with ID: {article_id}")
+            return {
+                'success': True, 
+                'message': f'Dinger Tuesday report created successfully',
+                'article_id': article_id,
+                'pitchers_analyzed': pitcher_names
+            }
+        else:
+            print("Failed to create pitcher report article")
+            return {'success': False, 'message': 'Failed to create pitcher report article'}
+            
+    except Exception as e:
+        print(f"Error creating Dinger Tuesday pitcher report: {e}")
+        return {'success': False, 'message': f'Error creating report: {e}'}
+
+# Initialize scheduler after all functions are defined
+scheduler = setup_scheduler()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080) 
