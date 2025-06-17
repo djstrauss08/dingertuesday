@@ -367,7 +367,7 @@ document.getElementById('generate-pitcher-report').addEventListener('click', fun
                 resultDiv.innerHTML = `
                     <div style="padding: 16px; border-radius: 6px; border: 2px solid #16a34a; background-color: #dcfce7; color: #15803d; font-weight: 600; margin-top: 12px;">
                         ✅ ${data.message}<br>
-                        <small style="color: #059669;">Pitchers analyzed: ${data.pitchers_analyzed.join(', ')}</small><br>
+                        <small style="color: #059669;">Pitchers analyzed: ${data.pitchers_analyzed ? data.pitchers_analyzed.join(', ') : 'N/A'}</small><br>
                         <a href="/blog" style="color: #0d9488; text-decoration: underline; font-weight: 700; margin-top: 8px; display: inline-block;">View the generated report</a>
                     </div>
                 `;
@@ -414,7 +414,7 @@ document.getElementById('generate-dinger-tuesday-report').addEventListener('clic
                 resultDiv.innerHTML = `
                     <div style="padding: 16px; border-radius: 6px; border: 2px solid #16a34a; background-color: #dcfce7; color: #15803d; font-weight: 600; margin-top: 12px;">
                         ✅ Dinger Tuesday Report Generated!<br>
-                        <small style="color: #059669;">Pitchers analyzed: ${data.pitchers_analyzed.join(', ')}</small><br>
+                        <small style="color: #059669;">Pitchers analyzed: ${data.pitchers_analyzed ? data.pitchers_analyzed.join(', ') : 'N/A'}</small><br>
                         <small style="color: #059669;">Article ID: ${data.article_id}</small><br>
                         <a href="/blog" style="color: #0d9488; text-decoration: underline; font-weight: 700; margin-top: 8px; display: inline-block;">View the Dinger Tuesday report</a>
                     </div>

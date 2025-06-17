@@ -1990,7 +1990,7 @@ def daily_status():
         },
         'scheduler_status': {
             'running': scheduler.running if scheduler is not None else False,
-            'total_jobs': len(scheduler.get_jobs()) if scheduler and scheduler.running else 0,
+            'total_jobs': len(scheduler.get_jobs()) if scheduler is not None else 0,
             'jobs': scheduled_jobs
         },
         'automated_schedule': {
