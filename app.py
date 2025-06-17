@@ -2756,5 +2756,59 @@ def database_status_endpoint():
             'message': f'Error getting database status: {str(e)}'
         }), 500
 
+# Environment detection for deployment optimization
+def get_deployment_environment():
+    """Detect the deployment environment"""
+    if os.getenv('REPL_ID'):
+        return 'replit'
+    elif os.getenv('K_SERVICE'):  # Cloud Run environment variable
+        return 'cloudrun'
+    elif os.getenv('VERCEL'):
+        return 'vercel'
+    else:
+        return 'local'
+
+# Enhanced database initialization for different environments
+def initialize_database_with_recovery():
+    """Initialize database with environment-specific recovery and optimization"""
+    try:
+        deployment_env = get_deployment_environment()
+        logger.info(f"Detected deployment environment: {deployment_env}")
+        
+        # Environment-specific optimizations
+        if deployment_env == 'cloudrun':
+            logger.info("Applying Cloud Run optimizations...")
+            # Ensure database directory exists (important for volume mounts)
+            os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+            
+        elif deployment_env == 'replit':
+            logger.info("Applying Replit optimizations...")
+            # Replit-specific setup if needed
+            pass
+        
+        # Check if database exists
+        if not os.path.exists(DATABASE_PATH):
+            logger.warning(f"Database not found at {DATABASE_PATH}")
+            
+            # Try to restore from backup
+            if restore_from_latest_backup():
+                logger.info("Successfully restored from backup")
+            else:
+                logger.info("No backup found, initializing new database")
+                init_database()
+        else:
+            logger.info(f"Database found at {DATABASE_PATH}")
+            init_database()  # This will just ensure tables exist
+            
+        # Create automatic backup on startup for production environments
+        if deployment_env in ['cloudrun', 'replit']:
+            logger.info("Creating startup backup...")
+            backup_database()
+            
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
+        # Fallback to basic initialization
+        init_database()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080) 
