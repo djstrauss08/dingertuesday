@@ -979,17 +979,8 @@ def daily_data_update():
         DAILY_DATA_CACHE['last_updated'] = get_eastern_time().isoformat()
         DAILY_DATA_CACHE['update_date'] = today_str
         
-        # Generate Dinger Tuesday Pitcher Report (backup - main generation is at 11AM)
-        logger.info("Generating backup Dinger Tuesday Pitcher Report...")
-        try:
-            report_result = create_daily_pitcher_report()
-            if report_result and report_result.get('success'):
-                logger.info(f"Successfully generated backup pitcher report: {report_result['message']}")
-            else:
-                logger.warning(f"Backup pitcher report generation skipped")
-        except Exception as report_error:
-            logger.error(f"Error generating backup pitcher report: {report_error}")
-            # Don't fail the entire daily update if pitcher report fails
+        # Note: Pitcher report generation moved exclusively to 11 AM scheduled task
+        # No backup generation in daily update to avoid duplicate articles
         
         update_time = time.time() - update_start_time
         logger.info(f"Daily data update completed successfully in {update_time:.2f} seconds")
@@ -1101,6 +1092,11 @@ def load_today_data_on_startup():
 def setup_scheduler():
     """Set up the background scheduler for daily updates and preloading"""
     global scheduler
+    
+    # Check if scheduler is disabled via environment variable
+    if os.environ.get('DISABLE_SCHEDULER') == '1':
+        logger.info("Background scheduler disabled via DISABLE_SCHEDULER environment variable")
+        return
     
     if scheduler is None:
         scheduler = BackgroundScheduler()
@@ -2073,6 +2069,26 @@ def clear_matchup_cache():
         logger.error(f"Error clearing matchup cache: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/refresh_odds')
+def refresh_odds():
+    """Refresh odds data by clearing cache and fetching fresh data"""
+    try:
+        # Clear the requests cache to force fresh data fetch
+        requests_cache.clear()
+        
+        # Clear any relevant caches
+        PLAYER_STATS_CACHE.clear()
+        
+        logger.info("Odds cache cleared, fresh data will be fetched on next request")
+        return jsonify({
+            'success': True, 
+            'message': 'Odds cache cleared - fresh data will be fetched',
+            'timestamp': get_eastern_time().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error refreshing odds: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/api/preload_teams')
 def preload_teams_endpoint():
     """Manually trigger preloading of popular teams"""
@@ -2089,19 +2105,19 @@ def preload_teams_endpoint():
 
 @app.route('/api/generate_pitcher_report', methods=['POST'])
 def generate_pitcher_report_endpoint():
-    """Manually trigger pitcher report generation"""
+    """Manually trigger pitcher report generation - using Dinger Tuesday format"""
     try:
-        article_id = create_daily_pitcher_report()
-        if article_id:
+        result = create_dinger_tuesday_pitcher_report()
+        if result and result.get('success'):
             return jsonify({
                 'success': True, 
-                'message': 'Pitcher report generated successfully',
-                'article_id': article_id
+                'message': result['message'],
+                'article_id': result['article_id']
             })
         else:
             return jsonify({
                 'success': False, 
-                'message': 'Failed to generate pitcher report'
+                'message': result.get('message', 'Failed to generate pitcher report')
             }), 400
     except Exception as e:
         print(f"Error generating pitcher report: {e}")
@@ -2306,7 +2322,16 @@ def generate_pitcher_report_content(top_pitchers, report_date):
     return content
 
 def create_daily_pitcher_report():
-    """Create and save daily pitcher report"""
+    """DEPRECATED: Use create_dinger_tuesday_pitcher_report() instead
+    This function is kept for backwards compatibility but should not be used.
+    """
+    print("WARNING: create_daily_pitcher_report() is deprecated. Use create_dinger_tuesday_pitcher_report() instead.")
+    return {'success': False, 'message': 'Function deprecated - use Dinger Tuesday format instead'}
+
+# Old implementation commented out to prevent duplicate articles
+"""
+Original create_daily_pitcher_report function - DISABLED to prevent duplicate articles
+def create_daily_pitcher_report_OLD():
     try:
         # Get today's date
         today = datetime.now().strftime('%Y-%m-%d')
@@ -2354,6 +2379,7 @@ def create_daily_pitcher_report():
     except Exception as e:
         print(f"Error creating daily pitcher report: {e}")
         return None
+"""
 
 @app.route('/api/debug_pitcher_data')
 def debug_pitcher_data():
@@ -2394,22 +2420,61 @@ def generate_dinger_tuesday_pitcher_report_content(top_pitchers, report_date):
     date_obj = datetime.strptime(report_date, '%Y-%m-%d')
     formatted_date = date_obj.strftime('%B %d, %Y')
     
-    # Start with the signature Dinger Tuesday opening
-    content = f"""<div class="intro-section">
-<p>Here's the deal folks—</p>
+    # Create varied, SEO-optimized introductions
+    intro_variations = [
+        f"""<div class="intro-section">
+<p>Tuesday's MLB slate is serving up some serious opportunities for home run prop betting. With FanDuel's 50% profit boost available on any home run wager every Tuesday, smart bettors know to target the most vulnerable arms on the mound.</p>
 
-<p>The days of stacking bonus bets for every home run in a game might be gone, but Dinger Tuesday lives on, and it's still one of the most fun ways to get in on the long ball action each week.</p>
-
-<p>Throughout this 2025 season, FanDuel is giving out 50% profit boosts on any home run prop—eligible on one bet, every Tuesday. This works on both straight bets or parlays, so if you want to bump up your pay day on a single player, or you're shooting for a lottery cash, you might as well take advantage of the extra lift.</p>
+<p>Today's analysis identifies three starting pitchers whose recent home run rates suggest they're prime targets for the long ball. These aren't just gut feelings—these are data-driven selections based on batters faced and home runs allowed this season.</p>
 </div>
 
-<p>So let's dive into today's slate.</p>
+<h2>Today's Most Vulnerable Pitchers</h2>
+<p>Our analysis reveals three arms that opposing hitters should be licking their chops to face. Let's break down why these pitchers are must-target options for your Tuesday home run props.</p>
+""",
+        f"""<div class="intro-section">
+<p>The numbers don't lie when it comes to identifying which pitchers are most susceptible to giving up home runs. Tuesday's MLB action features several arms that have been far too generous with the long ball this season.</p>
 
-<p><strong>Time to find a guy.</strong></p>
+<p>With FanDuel offering 50% profit boosts on home run props every Tuesday, targeting these vulnerable pitchers becomes even more profitable. Our data-driven approach focuses on home run rates per batter faced to identify the clearest opportunities.</p>
+</div>
 
-<h2>The Arms to Attack</h2>
-<p>Let's get to the meat and potatoes—which pitchers are about to have a very bad Tuesday.</p>
+<h2>Arms to Attack on {formatted_date}</h2>
+<p>Three starting pitchers stand out as particularly vulnerable to the home run ball. Here's why opposing power hitters should be salivating at these matchups.</p>
+""",
+        f"""<div class="intro-section">
+<p>Smart baseball bettors know that successful home run prop betting starts with identifying the right pitchers to target. Tuesday's slate offers several compelling options for those looking to capitalize on FanDuel's weekly 50% profit boost.</p>
+
+<p>Our analysis cuts through the noise to focus on what matters most: which pitchers have allowed home runs at the highest rates relative to batters faced. These statistical outliers represent the clearest betting opportunities.</p>
+</div>
+
+<h2>The Most Targetable Arms</h2>
+<p>Today's research identifies three pitchers whose home run rates make them priority targets. Each represents a different angle, but all share one common trait—they've been far too hittable when batters are looking to take them deep.</p>
+""",
+        f"""<div class="intro-section">
+<p>Every Tuesday brings fresh opportunities in the home run prop betting market, and today's MLB schedule features some particularly enticing matchups. The key is identifying which starting pitchers have shown the most vulnerability to the long ball.</p>
+
+<p>Using home run rate data based on batters faced, we've isolated the three most targetable arms taking the mound today. With FanDuel's 50% boost available, these selections offer enhanced value for sharp bettors.</p>
+</div>
+
+<h2>Tuesday's Prime Targets</h2>
+<p>Three starting pitchers have separated themselves as must-consider options for home run prop betting. Here's the breakdown on why each represents a strong play against opposing power hitters.</p>
+""",
+        f"""<div class="intro-section">
+<p>The best home run prop betting opportunities emerge when statistical analysis meets real-world matchups. Tuesday's MLB action delivers exactly that combination with several highly targetable starting pitchers.</p>
+
+<p>Rather than guessing, our approach focuses on concrete data: home runs allowed per batter faced. This metric cuts through small sample sizes and identifies genuine statistical outliers worth betting against.</p>
+</div>
+
+<h2>The Data-Driven Targets</h2>
+<p>Our analysis reveals three pitchers whose home run rates make them standout targets for Tuesday's action. Each offers a different risk-reward profile, but all share concerning statistical trends.</p>
 """
+    ]
+    
+    # Randomly select an intro variation based on date to ensure consistency for the same day
+    import hashlib
+    date_hash = int(hashlib.md5(report_date.encode()).hexdigest(), 16)
+    selected_intro = intro_variations[date_hash % len(intro_variations)]
+    
+    content = selected_intro
     
     # Varied content for each pitcher
     pitcher_variations = [
